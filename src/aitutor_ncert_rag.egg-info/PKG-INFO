@@ -1,0 +1,79 @@
+Metadata-Version: 2.4
+Name: aitutor-ncert-rag
+Version: 0.1.0
+Summary: NCERT-grounded RAG AI tutor (v1)
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+
+# NCERT-Grounded RAG AI Tutor (v1)
+
+Retrieval-Augmented Generation (RAG) tutor that answers **strictly from NCERT textbook PDFs** (in `books/`) using:
+
+- Concept-based chunking (heuristic section splits, not arbitrary token windows)
+- Metadata-filtered retrieval (class/subject/chapter)
+- Top-k vector similarity retrieval (Chroma)
+- Grounded LLM generation with refusal on low retrieval confidence
+
+## Folder layout
+
+- `books/`: NCERT chapter PDFs (already present in your workspace)
+- `src/aitutor/`: ingestion + retrieval + generation code
+- `data/`: local persistent Chroma index (created after ingestion)
+
+## Setup
+
+Create a venv and install dependencies:
+
+```bash
+python -m venv .venv
+.venv\\Scripts\\activate
+pip install -r requirements.txt
+pip install -e .
+```
+
+Set an LLM key (OpenAI-compatible). Create `.env`:
+
+```bash
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-4o-mini
+```
+
+## Ingest NCERT PDFs
+
+For your Class 10 Science PDFs:
+
+```bash
+python -m aitutor ingest --books-dir books\\Science --class 10 --subject Science
+```
+
+For Mathematics:
+
+```bash
+python -m aitutor ingest --books-dir books\\Mathematics --class 10 --subject Mathematics
+```
+
+## Ask questions (CLI)
+
+```bash
+python -m aitutor ask --class 10 --subject Science --chapter 1 "What is a balanced chemical equation?"
+```
+
+If you omit `--chapter`, it searches across the subject.
+
+## Run API (FastAPI)
+
+```bash
+uvicorn aitutor.api.main:app --reload
+```
+
+Example request body for `/ask`:
+
+```json
+{
+  "query": "What is a displacement reaction?",
+  "class": "10",
+  "subject": "Science",
+  "chapter": "1"
+}
+```
+
