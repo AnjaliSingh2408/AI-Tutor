@@ -53,20 +53,19 @@ python -m aitutor ask --class 10 --subject Science --chapter 1 "What is a balanc
 
 If you omit `--chapter`, it searches across the subject.
 
-## Run API (FastAPI)
+## Run Chatbot (Web UI)
+
+Start the chatbot server:
 
 ```bash
-uvicorn aitutor.api.main:app --reload
+uvicorn aitutor.api.main:app --reload --host 0.0.0.0
 ```
 
-Example request body for `/ask`:
+Open http://localhost:8000 in your browser. You’ll:
 
-```json
-{
-  "query": "What is a displacement reaction?",
-  "class": "10",
-  "subject": "Science",
-  "chapter": "1"
-}
-```
+1. **Select class and subject once** when starting a chat
+2. **Ask questions** — all answers use that same class/subject
+3. **Start a new chat** anytime to change class/subject
+
+No need to repeat class/subject for every question.
 

@@ -5,6 +5,8 @@ src/aitutor/__main__.py
 src/aitutor/cli.py
 src/aitutor/config.py
 src/aitutor/types.py
+src/aitutor/api/__init__.py
+src/aitutor/api/main.py
 src/aitutor/generation/__init__.py
 src/aitutor/generation/grounded_llm.py
 src/aitutor/ingest/__init__.py

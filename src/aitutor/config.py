@@ -18,8 +18,8 @@ class AppConfig:
     # Hallucination prevention: refuse if top similarity is below this
     min_similarity: float = 0.35
 
-    # LLM (Gemini, Pro)
-    gemini_model: str = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+    # LLM (Gemini) - must be set in .env, no fallback
+    gemini_model: str = os.getenv("GEMINI_MODEL", "")
 
 
 def get_config(project_root: str | Path | None = None) -> AppConfig:

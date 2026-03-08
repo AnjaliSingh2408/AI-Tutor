@@ -40,7 +40,13 @@ class GroundedLLM:
         return cls(get_config())
 
     def generate(self, *, query: str, retrieved: list[RetrievedChunk]) -> str:
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        api_key = os.environ.get("GEMINI_API_KEY")
+        model = self.cfg.gemini_model
+        if not api_key:
+            raise ValueError("GEMINI_API_KEY not set in .env")
+        if not model:
+            raise ValueError("GEMINI_MODEL not set in .env")
+        client = genai.Client(api_key=api_key)
         context = format_context(retrieved)
 
         system = (
@@ -65,7 +71,7 @@ class GroundedLLM:
         prompt = f"{system}\n\n{user}"
 
         resp = client.models.generate_content(
-            model=self.cfg.gemini_model,
+            model=model,
             contents=prompt,
             config={"temperature": 0.2},
         )
