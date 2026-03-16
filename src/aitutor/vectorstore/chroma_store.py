@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from ..config import AppConfig, get_config
+
+
+@lru_cache(maxsize=1)
+def _cached_client(path: str) -> chromadb.PersistentClient:
+    return chromadb.PersistentClient(path=path)
+
+
+@lru_cache(maxsize=2)
+def _cached_embedding_fn(model_name: str) -> SentenceTransformerEmbeddingFunction:
+    return SentenceTransformerEmbeddingFunction(model_name=model_name)
 
 
 @dataclass(frozen=True)
@@ -19,11 +30,11 @@ class ChromaStore:
 
     def _client(self) -> chromadb.PersistentClient:
         self.cfg.chroma_dir.mkdir(parents=True, exist_ok=True)
-        return chromadb.PersistentClient(path=str(self.cfg.chroma_dir))
+        return _cached_client(str(self.cfg.chroma_dir))
 
     def collection(self):
         client = self._client()
-        emb_fn = SentenceTransformerEmbeddingFunction(model_name=self.cfg.embedding_model_name)
+        emb_fn = _cached_embedding_fn(self.cfg.embedding_model_name)
         return client.get_or_create_collection(
             name=self.cfg.chroma_collection,
             embedding_function=emb_fn,

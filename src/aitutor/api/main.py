@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException
+from google.genai.errors import ClientError, ServerError
 
 load_dotenv()
 from fastapi.responses import HTMLResponse, FileResponse
@@ -17,8 +18,10 @@ from pydantic import BaseModel, Field
 
 from ..config import get_config
 from ..rag.tutor import Tutor
+from ..generation import ClarifierLLM, SummaryLLM
 
-# In-memory session store: session_id -> {class_, subject, chapter}
+# In-memory session store:
+# session_id -> {class_, subject, chapter, last_question, last_answer, history}
 _sessions: dict[str, dict] = {}
 
 # Default contexts if Chroma is empty
@@ -53,6 +56,98 @@ def _get_available_contexts() -> list[dict]:
     except Exception:
         pass
     return _DEFAULT_CONTEXTS
+
+
+def _is_clarification_request(text: str) -> bool:
+    """Heuristic: detect when the student is asking to explain again / in a better way."""
+    t = text.strip().lower()
+    if not t:
+        return False
+    keywords = [
+        "could not understand",
+        "can't understand",
+        "cannot understand",
+        "didn't understand",
+        "did not understand",
+        "explain again",
+        "explain in a better way",
+        "more clearly",
+        "explain once again",
+        "answer in an easier war",
+        "answer in a simpler way",
+        "answer in a more detailed way",
+        "answer in a more concise way",
+        "answer in a more clear way",
+        "answer in a more understandable way",
+        "answer in a more easy to understand way",
+        "answer in a more easy to understand way",
+        "explain it better",
+        "explain in detail",
+        "explain this in detail",
+        "explain in more detail",
+        "tell in detail",
+        "simpler way",
+        "simple way",
+        "step by step",
+        "more examples",
+        "give me some more examples",
+        "give some examples",
+        "some examples",
+        "explain this with example",
+        "explain this with examples",
+        "explain this by giving example",
+        "explain this by giving examples",
+        "explain with example",
+        "explain with examples",
+        "another example",
+        "one more example",
+        "solve again",
+        "solve it again",
+    ]
+    return any(k in t for k in keywords)
+
+
+def _is_summary_request(text: str) -> bool:
+    """Heuristic: detect when the student is asking for a summary/short notes."""
+    t = text.strip().lower()
+    if not t:
+        return False
+    phrases = [
+        "summarise",
+        "summarize",
+        "give a summary",
+        "give me a summary",
+        "short notes",
+        "in short",
+        "in brief",
+        "briefly explain",
+        "explain in short",
+        "explain briefly",
+        "make short notes",
+        "summary of this",
+        "summary of the topic",
+    ]
+    return any(p in t for p in phrases)
+
+
+def _append_history(ctx: dict, *, role: str, text: str) -> None:
+    if "history" not in ctx or not isinstance(ctx.get("history"), list):
+        ctx["history"] = []
+    ctx["history"].append({"role": role, "text": text})
+
+
+def _is_rag_refusal(answer: str) -> bool:
+    a = (answer or "").strip().lower()
+    if not a:
+        return False
+    triggers = [
+        "i can’t answer this confidently from the retrieved ncert content",
+        "i can't answer this confidently from the retrieved ncert content",
+        "i can’t answer this from the ncert text i have indexed",
+        "i can't answer this from the ncert text i have indexed",
+        "low retrieval confidence",
+    ]
+    return any(t in a for t in triggers)
 
 
 app = FastAPI(title="AI Tutor Chatbot", version="1.0.0")
@@ -100,6 +195,9 @@ def start_chat(req: StartChatRequest) -> ChatResponse:
         "class_": str(req.class_).strip(),
         "subject": str(req.subject).strip(),
         "chapter": str(req.chapter).strip() if req.chapter else None,
+        "last_question": None,
+        "last_answer": None,
+        "history": [],
     }
     return ChatResponse(
         session_id=session_id,
@@ -113,6 +211,7 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
     if session_id not in _sessions:
         raise HTTPException(status_code=404, detail="Session not found. Start a new chat.")
     ctx = _sessions[session_id]
+    user_query = req.query.strip()
     if not os.environ.get("GEMINI_API_KEY"):
         raise HTTPException(
             status_code=503,
@@ -123,22 +222,177 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
             status_code=503,
             detail="GEMINI_MODEL not set. Add GEMINI_MODEL=your_model to .env (e.g. models/gemini-2.5-flash) and restart.",
         )
+
+    # If the student asks to summarise a topic and we have a previous
+    # explanation or some text in the thread, use a cloud LLM to produce
+    # a level-appropriate summary instead of going through RAG again.
+    if _is_summary_request(user_query) and ctx.get("last_answer"):
+        try:
+            summariser = SummaryLLM.default()
+            _append_history(ctx, role="user", text=user_query)
+            source_text = ctx["last_answer"]
+            topic_hint = ctx.get("last_question") or user_query
+            answer = summariser.summarize(
+                class_=ctx["class_"],
+                subject=ctx["subject"],
+                chapter=ctx["chapter"],
+                topic_hint=topic_hint,
+                source_text=source_text,
+                summary_request=user_query,
+            )
+        except (KeyError, ValueError, ClientError, ServerError) as e:
+            msg = str(e)
+            if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=msg or "GEMINI_API_KEY and GEMINI_MODEL must be set in .env",
+                ) from e
+            if isinstance(e, ClientError) and "RESOURCE_EXHAUSTED" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The tutor has temporarily hit its usage limit for the Gemini model. "
+                        "Please wait a minute and try your question again."
+                    ),
+                ) from e
+            if isinstance(e, ServerError) and "UNAVAILABLE" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The Gemini model is temporarily overloaded (high demand). "
+                        "Please try again in a minute."
+                    ),
+                ) from e
+            raise
+        else:
+            ctx["last_answer"] = answer
+            _append_history(ctx, role="assistant", text=answer)
+            _sessions[session_id] = ctx
+            return AnswerResponse(answer=answer)
+
+    # If the student is not satisfied and asks to explain/solve again,
+    # use a cloud LLM fallback that re-explains the previous answer.
+    if _is_clarification_request(user_query) and ctx.get("last_question") and ctx.get("last_answer"):
+        try:
+            clarifier = ClarifierLLM.default()
+            _append_history(ctx, role="user", text=user_query)
+            answer = clarifier.clarify(
+                class_=ctx["class_"],
+                subject=ctx["subject"],
+                chapter=ctx["chapter"],
+                question=ctx["last_question"],
+                previous_answer=ctx["last_answer"],
+                student_followup=user_query,
+                thread=ctx.get("history") or [],
+            )
+        except (KeyError, ValueError, ClientError, ServerError) as e:
+            msg = str(e)
+            if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=msg or "GEMINI_API_KEY and GEMINI_MODEL must be set in .env",
+                ) from e
+            if isinstance(e, ClientError) and "RESOURCE_EXHAUSTED" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The tutor has temporarily hit its usage limit for the Gemini model. "
+                        "Please wait a minute and then ask again, or try a shorter question."
+                    ),
+                ) from e
+            if isinstance(e, ServerError) and "UNAVAILABLE" in msg:
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "The Gemini model is temporarily overloaded (high demand). "
+                        "Please try again in a minute."
+                    ),
+                ) from e
+            raise
+        else:
+            ctx["last_answer"] = answer
+            _append_history(ctx, role="assistant", text=answer)
+            _sessions[session_id] = ctx
+            return AnswerResponse(answer=answer)
+
     try:
         tutor = Tutor()
+        _append_history(ctx, role="user", text=user_query)
         answer = tutor.answer(
-            query=req.query.strip(),
+            query=user_query,
             class_=ctx["class_"],
             subject=ctx["subject"],
             chapter=ctx["chapter"],
             top_k=5,
         )
+
+        # If RAG refuses due to missing/low-confidence NCERT context and the student
+        # is explicitly asking for re-explanation/more examples, fall back to cloud LLM
+        # and keep output at the student's class level.
+        if _is_rag_refusal(answer) and _is_clarification_request(user_query):
+            try:
+                clarifier = ClarifierLLM.default()
+                answer = clarifier.clarify(
+                    class_=ctx["class_"],
+                    subject=ctx["subject"],
+                    chapter=ctx["chapter"],
+                    question=ctx.get("last_question") or user_query,
+                    previous_answer=ctx.get("last_answer") or answer,
+                    student_followup=user_query,
+                    thread=ctx.get("history") or [],
+                )
+            except (KeyError, ValueError, ClientError, ServerError) as e:
+                msg = str(e)
+                if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=msg or "GEMINI_API_KEY and GEMINI_MODEL must be set in .env",
+                    ) from e
+                if isinstance(e, ClientError) and "RESOURCE_EXHAUSTED" in msg:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "The tutor has temporarily hit its usage limit for the Gemini model. "
+                            "Please wait a minute and try again, or rephrase your question."
+                        ),
+                    ) from e
+                if isinstance(e, ServerError) and "UNAVAILABLE" in msg:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "The Gemini model is temporarily overloaded (high demand). "
+                            "Please try again in a minute."
+                        ),
+                    ) from e
+                raise
+
+        ctx["last_question"] = user_query
+        ctx["last_answer"] = answer
+        _append_history(ctx, role="assistant", text=answer)
+        _sessions[session_id] = ctx
         return AnswerResponse(answer=answer)
-    except (KeyError, ValueError) as e:
+    except (KeyError, ValueError, ClientError, ServerError) as e:
         msg = str(e)
         if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
             raise HTTPException(
                 status_code=503,
                 detail=msg or "GEMINI_API_KEY and GEMINI_MODEL must be set in .env",
+            ) from e
+        if isinstance(e, ClientError) and "RESOURCE_EXHAUSTED" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The tutor has temporarily hit its usage limit for the Gemini model. "
+                    "Please wait a minute and try again."
+                ),
+            ) from e
+        if isinstance(e, ServerError) and "UNAVAILABLE" in msg:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The Gemini model is temporarily overloaded (high demand). "
+                    "Please try again in a minute."
+                ),
             ) from e
         raise
 
@@ -150,6 +404,15 @@ def get_session_context(session_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Session not found.")
     ctx = _sessions[session_id].copy()
     return {"class": ctx["class_"], "subject": ctx["subject"], "chapter": ctx["chapter"]}
+
+
+@app.get("/api/chat/{session_id}/history")
+def get_session_history(session_id: str) -> dict:
+    """Get the full message thread for a session."""
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    ctx = _sessions[session_id]
+    return {"session_id": session_id, "history": ctx.get("history") or []}
 
 
 # --- Serve chatbot UI ---

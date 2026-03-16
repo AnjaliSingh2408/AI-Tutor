@@ -557,8 +557,15 @@
           body: JSON.stringify({ query: q }),
         });
         if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.detail || await res.text());
+          const bodyText = await res.text();
+          let detail = '';
+          try {
+            const parsed = JSON.parse(bodyText);
+            detail = parsed?.detail || '';
+          } catch (_) {
+            // ignore non-JSON error bodies
+          }
+          throw new Error(detail || bodyText || `HTTP ${res.status}`);
         }
         const data = await res.json();
         updateBubbleToText(msgEl, data.answer);
