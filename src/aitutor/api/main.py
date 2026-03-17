@@ -21,6 +21,9 @@ from ..rag.tutor import Tutor
 # In-memory session store: session_id -> {class_, subject, chapter}
 _sessions: dict[str, dict] = {}
 
+# How many past messages to include in the prompt (per session)
+_HISTORY_MAX_MESSAGES = 12
+
 # Default contexts if Chroma is empty
 _DEFAULT_CONTEXTS = [
     {"class": "10", "subject": "Science"},
@@ -100,6 +103,8 @@ def start_chat(req: StartChatRequest) -> ChatResponse:
         "class_": str(req.class_).strip(),
         "subject": str(req.subject).strip(),
         "chapter": str(req.chapter).strip() if req.chapter else None,
+        # Conversation memory for this session (in-process only)
+        "history": [],
     }
     return ChatResponse(
         session_id=session_id,
@@ -125,13 +130,27 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
         )
     try:
         tutor = Tutor()
+        history = _sessions[session_id].get("history") or []
+        # Append user message before generation so the model sees it in history
+        history.append({"role": "user", "text": req.query.strip()})
+        # Keep only the last N messages
+        if len(history) > _HISTORY_MAX_MESSAGES:
+            history[:] = history[-_HISTORY_MAX_MESSAGES :]
+        _sessions[session_id]["history"] = history
+
         answer = tutor.answer(
             query=req.query.strip(),
             class_=ctx["class_"],
             subject=ctx["subject"],
             chapter=ctx["chapter"],
             top_k=5,
+            history=history,
         )
+        # Store assistant response in memory too
+        history.append({"role": "assistant", "text": answer})
+        if len(history) > _HISTORY_MAX_MESSAGES:
+            history[:] = history[-_HISTORY_MAX_MESSAGES :]
+        _sessions[session_id]["history"] = history
         return AnswerResponse(answer=answer)
     except (KeyError, ValueError) as e:
         msg = str(e)
