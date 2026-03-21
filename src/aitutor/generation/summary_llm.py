@@ -14,6 +14,7 @@ class SummaryLLM:
     @classmethod
     def default(cls) -> "SummaryLLM":
         return cls(get_config())
+        #summary llm is used in the project to generate a summary of the topic for the student
 
     def _client_and_model(self) -> tuple[genai.Client, str]:
         api_key = get_gemini_api_key()
