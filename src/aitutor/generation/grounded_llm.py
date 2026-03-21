@@ -45,10 +45,13 @@ class GroundedLLM:
             raise ValueError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
         client = genai.Client(api_key=api_key)
         context = format_context(retrieved)
+        print("[LLM-DEBUG] final context sent to LLM:")
+        print(context[:4000])
 
         system = (
-            "You are an NCERT-grounded AI tutor. You must answer using ONLY the provided NCERT context.\n"
-            "If the answer is not explicitly supported by the context, you must refuse.\n"
+            "You are an NCERT-grounded AI tutor. Answer using ONLY the provided NCERT context.\n"
+            "If partial information is available, explain it clearly.\n"
+            "Do not refuse unless the context is completely unrelated to the question.\n"
             "Do not use outside knowledge. Do not guess.\n"
             "Write in a clear, student-friendly way, aligned to the NCERT syllabus.\n"
             "Format strictly as:\n"

@@ -43,12 +43,5 @@ class Tutor:
                 "Try specifying the chapter or rephrasing your question using NCERT terms."
             )
 
-        best = retrieved[0].similarity
-        if best < self.cfg.min_similarity:
-            return (
-                "I can’t answer this confidently from the retrieved NCERT content (low retrieval confidence). "
-                "Please rephrase your question or specify the exact chapter/topic from NCERT."
-            )
-
         return self.llm.generate(query=query, retrieved=retrieved)
 

@@ -60,7 +60,12 @@ class Retriever:
         )
         compression_retriever = get_reranker(base_retriever=hybrid_retriever, top_n=top_k)
 
+        hybrid_docs = hybrid_retriever.invoke(query)
         retrieved_docs = compression_retriever.invoke(query)
+        # Failsafe: if reranker gives nothing, fall back to hybrid docs.
+        if not retrieved_docs:
+            print("[HYBRID-DEBUG] reranker fallback: using hybrid results")
+            retrieved_docs = hybrid_docs[:top_k]
 
         # Keep candidate order ids for "did reranker change order?" debug.
         pre_ids = list(getattr(hybrid_retriever, "_last_candidate_chunk_ids", []))

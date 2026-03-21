@@ -40,6 +40,8 @@ def ingest_books(
         concept_chunks = concept_chunk_pages(pages)
 
         for idx, c in enumerate(concept_chunks):
+            if not c.text or not c.text.strip():
+                continue
             chunk_id = f"{class_}|{subject}|{chapter}|{pdf.stem}|{idx}|{uuid.uuid4().hex[:8]}"
             ids.append(chunk_id)
             texts.append(c.text)
@@ -57,6 +59,26 @@ def ingest_books(
             )
 
         # batch write per PDF (keeps memory bounded)
-        store.add_texts(ids=ids, texts=texts, metadatas=metas)
+        if ids:
+            store.add_texts(ids=ids, texts=texts, metadatas=metas)
+            # Requirement: print 2-3 stored chunks to verify content quality.
+            sample = store.get(
+                where={
+                    "$and": [
+                        {"class": {"$eq": str(class_)}},
+                        {"subject": {"$eq": str(subject)}},
+                        {"chapter": {"$eq": str(chapter)}},
+                    ]
+                },
+                limit=3,
+                include=["documents", "metadatas"],
+            )
+            docs = sample.get("documents") or []
+            smeta = sample.get("metadatas") or []
+            print("[INGEST-DEBUG] sample stored chunks")
+            for i, (d, m) in enumerate(zip(docs, smeta), start=1):
+                title = (m or {}).get("concept_title", "Concept")
+                text = (d or "").replace("\n", " ").strip()
+                print(f"[INGEST-DEBUG]  C{i}: concept={title!r} text={text[:220]}")
         ids, texts, metas = [], [], []
 

@@ -212,8 +212,8 @@ class HybridCandidatesRetriever(BaseRetriever):
         dense_docs = self.dense_retriever.invoke(query)
         sparse_docs = self.sparse_retriever.invoke(query)
 
-        print("[HYBRID-DEBUG] dense_results (top K)")
-        for i, d in enumerate(dense_docs[: self.min_candidates], start=1):
+        print("[HYBRID-DEBUG] dense_results (first 3)")
+        for i, d in enumerate(dense_docs[:3], start=1):
             meta = d.metadata or {}
             title = meta.get("concept_title") or ""
             pages = ""
@@ -222,14 +222,21 @@ class HybridCandidatesRetriever(BaseRetriever):
             sim = meta.get("dense_similarity")
             print(f"[HYBRID-DEBUG]  D{i}: id={meta.get('chunk_id')} sim={sim} concept={title!r}{pages}")
 
-        print("[HYBRID-DEBUG] sparse_results (top K)")
-        for i, d in enumerate(sparse_docs[: self.min_candidates], start=1):
+        print("[HYBRID-DEBUG] sparse_results (first 3)")
+        for i, d in enumerate(sparse_docs[:3], start=1):
             meta = d.metadata or {}
             title = meta.get("concept_title") or ""
             pages = ""
             if meta.get("page_start") is not None or meta.get("page_end") is not None:
                 pages = f" pages={meta.get('page_start')}–{meta.get('page_end')}"
             print(f"[HYBRID-DEBUG]  S{i}: id={meta.get('chunk_id')} concept={title!r}{pages}")
+
+        dense_ids = {str((d.metadata or {}).get("chunk_id")) for d in dense_docs if d.metadata}
+        sparse_ids = {str((d.metadata or {}).get("chunk_id")) for d in sparse_docs if d.metadata}
+        overlap = len(dense_ids & sparse_ids)
+        print(
+            f"[HYBRID-DEBUG] dense_count={len(dense_docs)} sparse_count={len(sparse_docs)} overlap={overlap}"
+        )
 
         candidates = self.ensemble_retriever.invoke(query)
         # `EnsembleRetriever` dedups by `id_key` (if provided) using metadata.
