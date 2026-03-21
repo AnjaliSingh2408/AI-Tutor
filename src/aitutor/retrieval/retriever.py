@@ -1,18 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from ..config import AppConfig, get_config
 from ..types import Chunk, RetrievedChunk
 from ..vectorstore import ChromaStore
-from .bm25_retriever import BM25Retriever
-from .reranker import rerank
-
-
-def _similarity_from_distance(distance: float) -> float:
-    # For Chroma cosine distance: distance = 1 - cosine_similarity
-    return 1.0 - float(distance)
+from .langchain_hybrid import (
+    get_dense_retriever,
+    get_hybrid_retriever,
+    get_reranker,
+    get_sparse_retriever,
+)
 
 
 @dataclass(frozen=True)
@@ -34,76 +32,71 @@ class Retriever:
         chapter: str | None,
         top_k: int,
     ) -> list[RetrievedChunk]:
-        # ChromaDB >=0.5 expects a single top-level operator in `where`,
-        # so we use an explicit $and of equality conditions.
-        filters: list[dict[str, Any]] = [
-            {"class": {"$eq": str(class_)}},
-            {"subject": {"$eq": str(subject)}},
+        # Requirement targets:
+        # Query -> Hybrid Retriever -> Reranker -> Top 5 docs -> LLM
+        #
+        # We:
+        # 1) Retrieve dense (Chroma) + sparse (BM25) candidates
+        # 2) Fuse with LangChain `EnsembleRetriever` (RRF)
+        # 3) Rerank using HuggingFace cross-encoder via `ContextualCompressionRetriever`
+        #
+        # Debug prints are inside the HybridCandidatesRetriever.
+
+        # At least top-20 BEFORE reranking.
+        dense_k = max(20, top_k * 4)
+        sparse_k = max(20, top_k * 4)
+        min_candidates = 20
+
+        dense_retriever = get_dense_retriever(
+            cfg=self.cfg, class_=class_, subject=subject, chapter=chapter, k=dense_k
+        )
+        sparse_retriever = get_sparse_retriever(
+            cfg=self.cfg, class_=class_, subject=subject, chapter=chapter, k=sparse_k
+        )
+        hybrid_retriever = get_hybrid_retriever(
+            dense_retriever=dense_retriever,
+            sparse_retriever=sparse_retriever,
+            min_candidates=min_candidates,
+        )
+        compression_retriever = get_reranker(base_retriever=hybrid_retriever, top_n=top_k)
+
+        retrieved_docs = compression_retriever.invoke(query)
+
+        # Keep candidate order ids for "did reranker change order?" debug.
+        pre_ids = list(getattr(hybrid_retriever, "_last_candidate_chunk_ids", []))
+
+        # `ContextualCompressionRetriever` returns the reranked top-N docs.
+        # For debugging, we compare reranked top ordering vs the original candidate ordering.
+        post_ids = [
+            str((d.metadata or {}).get("chunk_id")) for d in retrieved_docs if d.metadata
         ]
-        if chapter:
-            filters.append({"chapter": {"$eq": str(chapter)}})
-        where: dict[str, Any] | None = {"$and": filters} if filters else None
+        if pre_ids and post_ids:
+            pre_top = pre_ids[: len(post_ids)]
+            if pre_top == post_ids:
+                print(
+                    "[HYBRID-DEBUG] reranker order check: WARNING (top results order matches pre-rerank)"
+                )
 
-        # 1) Vector retrieval (top 8 candidates)
-        vector_k = 8
-        res = self.store.query(query_text=query, n_results=vector_k, where=where)
+        print("[HYBRID-DEBUG] reranked_top_results")
+        out: list[RetrievedChunk] = []
+        for i, doc in enumerate(retrieved_docs, start=1):
+            meta = doc.metadata or {}
+            chunk_id = str(meta.get("chunk_id") or doc.id or "")
+            dense_similarity = float(meta.get("dense_similarity") or 0.0)
 
-        ids = (res.get("ids") or [[]])[0]
-        docs = (res.get("documents") or [[]])[0]
-        metas = (res.get("metadatas") or [[]])[0]
-        dists = (res.get("distances") or [[]])[0]
+            # Keep metadata but drop our helper fields so `RetrievedChunk.chunk.metadata`
+            # stays aligned with your original code's expectations.
+            cleaned_meta = {k: v for k, v in meta.items() if k not in {"chunk_id", "dense_similarity"}}
+            chunk = Chunk(id=chunk_id, text=doc.page_content, metadata=cleaned_meta)
+            out.append(RetrievedChunk(chunk=chunk, similarity=dense_similarity))
 
-        chunks: list[Chunk] = []
-        vector_results: list[RetrievedChunk] = []
-        for cid, doc, meta, dist in zip(ids, docs, metas, dists):
-            chunk = Chunk(id=str(cid), text=str(doc), metadata=dict(meta or {}))
-            chunks.append(chunk)
-            vector_results.append(
-                RetrievedChunk(chunk=chunk, similarity=_similarity_from_distance(dist))
+            title = cleaned_meta.get("concept_title") or ""
+            pages = ""
+            if cleaned_meta.get("page_start") is not None or cleaned_meta.get("page_end") is not None:
+                pages = f" pages={cleaned_meta.get('page_start')}–{cleaned_meta.get('page_end')}"
+            print(
+                f"[HYBRID-DEBUG]  R{i}: id={chunk_id} sim={dense_similarity} concept={title!r}{pages}"
             )
 
-        if not chunks:
-            return []
-
-        # 2) BM25 retrieval (top 8 candidates over the same chunk list)
-        bm25_results: list[RetrievedChunk] = []
-        try:
-            bm25_k = 8
-            bm25_retriever = BM25Retriever.from_chunks(chunks)
-            bm25_results = bm25_retriever.retrieve(query=query, top_k=bm25_k)
-        except Exception:
-            # If BM25 fails for any reason, fall back to vector-only results.
-            bm25_results = []
-
-        # 3) Merge results and 4) deduplicate by chunk id (keep first occurrence)
-        merged_by_id: dict[str, RetrievedChunk] = {}
-        for rc in vector_results + bm25_results:
-            cid = rc.chunk.id
-            if cid not in merged_by_id:
-                merged_by_id[cid] = rc
-
-        merged = list(merged_by_id.values())
-
-        # 5) Rerank merged candidates with cross-encoder (by text only).
-        # If reranking fails, fall back to merged retrieval ordering.
-        try:
-            candidate_texts = [rc.chunk.text for rc in merged]
-            reranked_texts = rerank(query=query, candidates=candidate_texts, top_k=top_k)
-
-            # Map reranked texts back to RetrievedChunk objects, preserving similarity scores.
-            remaining = merged.copy()
-            out: list[RetrievedChunk] = []
-            for text in reranked_texts:
-                for idx, rc in enumerate(remaining):
-                    if rc.chunk.text == text:
-                        out.append(rc)
-                        remaining.pop(idx)
-                        break
-
-            # 6) Return top_k results in the same format expected by Tutor.answer
-            return out
-        except Exception:
-            # Safe fallback: just return up to top_k merged results (vector + BM25) without reranking.
-            merged.sort(key=lambda rc: rc.similarity, reverse=True)
-            return merged[:top_k]
+        return out
 

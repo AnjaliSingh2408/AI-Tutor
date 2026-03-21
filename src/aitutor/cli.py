@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dotenv import load_dotenv
+from .config import load_project_dotenv
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    load_dotenv()
+    load_project_dotenv()
     args = build_parser().parse_args(argv)
 
     if args.cmd == "ingest":

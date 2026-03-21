@@ -11,12 +11,33 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from google.genai.errors import ClientError, ServerError
 
-load_dotenv()
+# Load `.env` from repo root (uvicorn cwd may not be the project folder).
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+load_dotenv(_REPO_ROOT / ".env", override=True)
+
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from ..config import get_config
+from ..config import get_config, get_gemini_api_key
+
+
+def _raise_if_gemini_api_key_invalid(exc: BaseException) -> None:
+    """Map Google's API_KEY_INVALID to a clear HTTP error (avoids a 500 + traceback)."""
+    if isinstance(exc, ClientError):
+        msg = str(exc)
+        if "API_KEY_INVALID" in msg or "api key not valid" in msg.lower():
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Gemini rejected your API key (API_KEY_INVALID). "
+                    "Create a Developer API key at https://aistudio.google.com/apikey . "
+                    "If the key comes from Google Cloud Console: use Application restrictions = "
+                    "'None' or 'IP addresses' (not 'HTTP referrers' — that breaks server apps), and "
+                    "allow the Generative Language API. Put the key in `.env` as GEMINI_API_KEY=... "
+                    "and restart uvicorn."
+                ),
+            ) from exc
 from ..rag.tutor import Tutor
 from ..generation import ClarifierLLM, SummaryLLM
 
@@ -212,16 +233,15 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
         raise HTTPException(status_code=404, detail="Session not found. Start a new chat.")
     ctx = _sessions[session_id]
     user_query = req.query.strip()
-    if not os.environ.get("GEMINI_API_KEY"):
+    if not get_gemini_api_key():
         raise HTTPException(
             status_code=503,
-            detail="GEMINI_API_KEY not set. Create a .env file in the project root with GEMINI_API_KEY=your_key and restart the server.",
+            detail=(
+                "GEMINI_API_KEY (or GOOGLE_API_KEY) not set. Add it to `.env` in the project root "
+                "and restart the server."
+            ),
         )
-    if not os.environ.get("GEMINI_MODEL"):
-        raise HTTPException(
-            status_code=503,
-            detail="GEMINI_MODEL not set. Add GEMINI_MODEL=your_model to .env (e.g. models/gemini-2.5-flash) and restart.",
-        )
+    # GEMINI_MODEL defaults to models/gemini-2.5-flash; set GEMINI_MODEL in .env to override.
 
     # If the student asks to summarise a topic and we have a previous
     # explanation or some text in the thread, use a cloud LLM to produce
@@ -241,6 +261,7 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
                 summary_request=user_query,
             )
         except (KeyError, ValueError, ClientError, ServerError) as e:
+            _raise_if_gemini_api_key_invalid(e)
             msg = str(e)
             if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
                 raise HTTPException(
@@ -286,6 +307,7 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
                 thread=ctx.get("history") or [],
             )
         except (KeyError, ValueError, ClientError, ServerError) as e:
+            _raise_if_gemini_api_key_invalid(e)
             msg = str(e)
             if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
                 raise HTTPException(
@@ -342,6 +364,7 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
                     thread=ctx.get("history") or [],
                 )
             except (KeyError, ValueError, ClientError, ServerError) as e:
+                _raise_if_gemini_api_key_invalid(e)
                 msg = str(e)
                 if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
                     raise HTTPException(
@@ -372,6 +395,7 @@ def ask_question(session_id: str, req: AskRequest) -> AnswerResponse:
         _sessions[session_id] = ctx
         return AnswerResponse(answer=answer)
     except (KeyError, ValueError, ClientError, ServerError) as e:
+        _raise_if_gemini_api_key_invalid(e)
         msg = str(e)
         if "GEMINI" in msg or "GEMINI_API_KEY" in msg or "GEMINI_MODEL" in msg:
             raise HTTPException(

@@ -41,6 +41,20 @@ class ChromaStore:
             metadata={"hnsw:space": self.cfg.chroma_space},
         )
 
+    def raw_collection(self):
+        """
+        Collection handle WITHOUT embedding function.
+
+        This is safe for `.get(...)` (reading stored documents/metadatas) even
+        when the embedding model cannot be downloaded/initialized.
+        """
+        client = self._client()
+        return client.get_or_create_collection(
+            name=self.cfg.chroma_collection,
+            embedding_function=None,
+            metadata={"hnsw:space": self.cfg.chroma_space},
+        )
+
     def add_texts(self, *, ids: list[str], texts: list[str], metadatas: list[dict[str, Any]]) -> None:
         if not ids:
             return
@@ -64,4 +78,17 @@ class ChromaStore:
             # extra fields we need.
             include=["documents", "metadatas", "distances"],
         )
+
+    def get(
+        self,
+        *,
+        where: dict[str, Any] | None,
+        limit: int,
+        include: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Fetch stored items without requiring embeddings.
+        """
+        col = self.raw_collection()
+        return col.get(where=where, limit=limit, include=include or ["documents", "metadatas"])
 
