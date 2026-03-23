@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 
 from google import genai
 
-from ..config import AppConfig, get_config
+from ..config import AppConfig, get_config, get_gemini_api_key
 from ..types import RetrievedChunk
 
 
@@ -40,18 +39,19 @@ class GroundedLLM:
         return cls(get_config())
 
     def generate(self, *, query: str, retrieved: list[RetrievedChunk]) -> str:
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = get_gemini_api_key()
         model = self.cfg.gemini_model
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not set in .env")
-        if not model:
-            raise ValueError("GEMINI_MODEL not set in .env")
+            raise ValueError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
         client = genai.Client(api_key=api_key)
         context = format_context(retrieved)
+        print("[LLM-DEBUG] final context sent to LLM:")
+        print(context[:4000])
 
         system = (
-            "You are an NCERT-grounded AI tutor. You must answer using ONLY the provided NCERT context.\n"
-            "If the answer is not explicitly supported by the context, you must refuse.\n"
+            "You are an NCERT-grounded AI tutor. Answer using ONLY the provided NCERT context.\n"
+            "If partial information is available, explain it clearly.\n"
+            "Do not refuse unless the context is completely unrelated to the question.\n"
             "Do not use outside knowledge. Do not guess.\n"
             "Write in a clear, student-friendly way, aligned to the NCERT syllabus.\n"
             "Format strictly as:\n"

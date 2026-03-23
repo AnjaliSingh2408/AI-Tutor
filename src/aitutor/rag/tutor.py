@@ -6,49 +6,66 @@ from ..config import AppConfig, get_config
 from ..generation import GroundedLLM
 from ..retrieval import Retriever
 from ..vectorstore import ChromaStore
+from ..retrieval.query_corrector import correct_query
 
 
-@dataclass(frozen=True)
+@dataclass
 class Tutor:
     cfg: AppConfig
     retriever: Retriever
     llm: GroundedLLM
 
+    # ⭐ Factory method — ALWAYS use this
     @classmethod
     def default(cls) -> "Tutor":
         cfg = get_config()
-        return cls(cfg=cfg, retriever=Retriever.default(), llm=GroundedLLM(cfg))
+        store = ChromaStore(cfg)
+        retriever = Retriever(cfg=cfg, store=store)
+        llm = GroundedLLM(cfg)
+        return cls(cfg=cfg, retriever=retriever, llm=llm)
 
-    def __init__(self, cfg: AppConfig | None = None):
-        cfg = cfg or get_config()
-        object.__setattr__(self, "cfg", cfg)
-        object.__setattr__(self, "retriever", Retriever(cfg=cfg, store=ChromaStore(cfg)))
-        object.__setattr__(self, "llm", GroundedLLM(cfg))
-
+    # ⭐ Main answer function
     def answer(
         self,
         *,
         query: str,
         class_: str,
         subject: str,
-        chapter: str | None,
+        chapter: str | None = None,
         top_k: int = 5,
     ) -> str:
+
+        # 🔥 Save original query
+        original_query = query
+
+        # ✅ Step 1 — Strong spelling correction
+        corrected_query = correct_query(query)
+
+        # ✅ Step 2 — Retrieve using corrected query
         retrieved = self.retriever.retrieve(
-            query=query, class_=class_, subject=subject, chapter=chapter, top_k=top_k
+            query=corrected_query,
+            class_=class_,
+            subject=subject,
+            chapter=chapter,
+            top_k=top_k,
         )
+
+        # 🔁 Step 3 — Fallback: try original query
+        if not retrieved:
+            retrieved = self.retriever.retrieve(
+                query=original_query,
+                class_=class_,
+                subject=subject,
+                chapter=chapter,
+                top_k=top_k,
+            )
+
+        # ❌ Step 4 — If still nothing found
         if not retrieved:
             return (
-                "I can’t answer this from the NCERT text I have indexed for the selected class/subject/chapter. "
-                "Try specifying the chapter or rephrasing your question using NCERT terms."
+                "I couldn’t find this topic in the selected NCERT content. "
+                "Try specifying the chapter or asking in another way."
             )
 
-        best = retrieved[0].similarity
-        if best < self.cfg.min_similarity:
-            return (
-                "I can’t answer this confidently from the retrieved NCERT content (low retrieval confidence). "
-                "Please rephrase your question or specify the exact chapter/topic from NCERT."
-            )
-
-        return self.llm.generate(query=query, retrieved=retrieved)
-
+        # ⭐ Step 5 — Generate grounded answer
+        return self.llm.generate(query=corrected_query, retrieved=retrieved)

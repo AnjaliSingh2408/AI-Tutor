@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 
 from google import genai
 
-from ..config import AppConfig, get_config
+from ..config import AppConfig, get_config, get_gemini_api_key
 
 
 @dataclass(frozen=True)
@@ -17,12 +16,10 @@ class ClarifierLLM:
         return cls(get_config())
 
     def _client_and_model(self) -> tuple[genai.Client, str]:
-        api_key = os.environ.get("GEMINI_API_KEY")
+        api_key = get_gemini_api_key()
         model = self.cfg.gemini_model
         if not api_key:
-            raise ValueError("GEMINI_API_KEY not set in .env")
-        if not model:
-            raise ValueError("GEMINI_MODEL not set in .env")
+            raise ValueError("GEMINI_API_KEY (or GOOGLE_API_KEY) not set in .env")
         return genai.Client(api_key=api_key), model
 
     def clarify(

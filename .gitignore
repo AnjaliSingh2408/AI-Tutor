@@ -14,3 +14,4 @@ data/
 vector_store/
 chromadb/
 books/
+venv/

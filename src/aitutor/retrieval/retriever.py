@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from ..config import AppConfig, get_config
 from ..types import Chunk, RetrievedChunk
 from ..vectorstore import ChromaStore
-
-
-def _similarity_from_distance(distance: float) -> float:
-    # For Chroma cosine distance: distance = 1 - cosine_similarity
-    return 1.0 - float(distance)
+from .langchain_hybrid import (
+    get_dense_retriever,
+    get_hybrid_retriever,
+    get_sparse_retriever,
+)
 
 
 @dataclass(frozen=True)
@@ -32,27 +31,64 @@ class Retriever:
         chapter: str | None,
         top_k: int,
     ) -> list[RetrievedChunk]:
-        # ChromaDB >=0.5 expects a single top-level operator in `where`,
-        # so we use an explicit $and of equality conditions.
-        filters: list[dict[str, Any]] = [
-            {"class": {"$eq": str(class_)}},
-            {"subject": {"$eq": str(subject)}},
-        ]
-        if chapter:
-            filters.append({"chapter": {"$eq": str(chapter)}})
-        where: dict[str, Any] | None = {"$and": filters} if filters else None
 
-        res = self.store.query(query_text=query, n_results=top_k, where=where)
+        # Hybrid Retrieval WITHOUT reranker (offline-safe)
 
-        ids = (res.get("ids") or [[]])[0]
-        docs = (res.get("documents") or [[]])[0]
-        metas = (res.get("metadatas") or [[]])[0]
-        dists = (res.get("distances") or [[]])[0]
+        dense_k = max(20, top_k * 4)
+        sparse_k = max(20, top_k * 4)
+        min_candidates = 20
+
+        dense_retriever = get_dense_retriever(
+            cfg=self.cfg, class_=class_, subject=subject, chapter=chapter, k=dense_k
+        )
+
+        sparse_retriever = get_sparse_retriever(
+            cfg=self.cfg, class_=class_, subject=subject, chapter=chapter, k=sparse_k
+        )
+
+        hybrid_retriever = get_hybrid_retriever(
+            dense_retriever=dense_retriever,
+            sparse_retriever=sparse_retriever,
+            min_candidates=min_candidates,
+        )
+
+        candidates = hybrid_retriever.invoke(query)
+        retrieved_docs = candidates[:15]
+
+        print("[HYBRID-DEBUG] hybrid_top_results")
 
         out: list[RetrievedChunk] = []
-        for cid, doc, meta, dist in zip(ids, docs, metas, dists):
-            chunk = Chunk(id=str(cid), text=str(doc), metadata=dict(meta or {}))
-            out.append(RetrievedChunk(chunk=chunk, similarity=_similarity_from_distance(dist)))
-        out.sort(key=lambda x: x.similarity, reverse=True)
-        return out
 
+        for i, doc in enumerate(retrieved_docs, start=1):
+            meta = doc.metadata or {}
+            chunk_id = str(meta.get("chunk_id") or doc.id or "")
+            dense_similarity = float(meta.get("dense_similarity") or 0.0)
+
+            cleaned_meta = {
+                k: v for k, v in meta.items()
+                if k not in {"chunk_id", "dense_similarity"}
+            }
+
+            chunk = Chunk(
+                id=chunk_id,
+                text=doc.page_content,
+                metadata=cleaned_meta,
+            )
+
+            out.append(
+                RetrievedChunk(
+                    chunk=chunk,
+                    similarity=dense_similarity,
+                )
+            )
+
+            title = cleaned_meta.get("concept_title") or ""
+            pages = ""
+            if cleaned_meta.get("page_start") is not None or cleaned_meta.get("page_end") is not None:
+                pages = f" pages={cleaned_meta.get('page_start')}–{cleaned_meta.get('page_end')}"
+
+            print(
+                f"[HYBRID-DEBUG]  R{i}: id={chunk_id} sim={dense_similarity} concept={title!r}{pages}"
+            )
+
+        return out
