@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..config import get_config, get_gemini_api_key
 from ..rag.tutor import Tutor
 from ..generation import ClarifierLLM, SummaryLLM
+from ..exam import ExamEngine
 
 # --- Load .env from repo root ---
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -119,6 +120,19 @@ class AnswerResponse(BaseModel):
     answer: str
 
 
+class ExamRequest(BaseModel):
+    class_: str = Field(..., alias="class")
+    subject: str
+    chapters: list[str]
+    difficulty_level: str
+    total_marks: int
+    paper_pattern: str = "CBSE latest pattern"
+    student_answers: dict[str, str] | str | None = None
+
+    class Config:
+        populate_by_name = True
+
+
 # ---------- Routes ----------
 
 @app.get("/api/contexts")
@@ -198,6 +212,32 @@ def ask_question(session_id: str, req: AskRequest):
     _append_history(ctx, role="assistant", text=answer)
 
     return AnswerResponse(answer=answer)
+
+
+@app.post("/api/exam/run")
+def run_exam(req: ExamRequest):
+    if not get_gemini_api_key():
+        raise HTTPException(503, "GEMINI_API_KEY missing in .env")
+
+    payload = {
+        "class": req.class_,
+        "subject": req.subject,
+        "chapters": req.chapters,
+        "difficulty_level": req.difficulty_level,
+        "total_marks": req.total_marks,
+        "paper_pattern": req.paper_pattern,
+        "student_answers": req.student_answers if req.student_answers is not None else {},
+    }
+    try:
+        engine = ExamEngine.default()
+        return engine.run(payload)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except (ClientError, ServerError) as exc:
+        _raise_if_gemini_api_key_invalid(exc)
+        raise HTTPException(503, "Exam generation service temporarily unavailable.") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Exam generation failed: {exc}") from exc
 
 
 @app.get("/api/chat/{session_id}/context")

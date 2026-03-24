@@ -359,6 +359,93 @@
       z-index: 100;
       animation: fadeIn 0.3s ease;
     }
+
+    .exam-panel {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .exam-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+
+    .exam-grid .form-group textarea,
+    .exam-grid .form-group input,
+    .exam-grid .form-group select {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+    }
+
+    .exam-grid .form-group textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+
+    .exam-grid .full {
+      grid-column: 1 / -1;
+    }
+
+    .exam-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .exam-output {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem;
+      max-height: 280px;
+      overflow: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .exam-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .exam-tab-btn {
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .exam-tab-btn.active {
+      border-color: var(--accent);
+      color: white;
+      background: var(--accent);
+    }
+
+    .exam-panel-content {
+      display: none;
+    }
+
+    .exam-panel-content.active {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -401,6 +488,64 @@
         ></textarea>
         <button class="send-btn" id="sendBtn" type="button">Send</button>
       </div>
+
+      <div class="exam-panel">
+        <h3 style="font-size:1rem;">CBSE Exam Generator</h3>
+        <div class="exam-grid">
+          <div class="form-group">
+            <label for="examClass">Class</label>
+            <select id="examClass">
+              <option value="9">Class 9</option>
+              <option value="10" selected>Class 10</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="examSubject">Subject</label>
+            <select id="examSubject">
+              <option value="Maths">Maths</option>
+              <option value="Science">Science</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="examDifficulty">Difficulty</label>
+            <select id="examDifficulty">
+              <option value="easy">easy</option>
+              <option value="medium" selected>medium</option>
+              <option value="hard">hard</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="examTotalMarks">Total Marks</label>
+            <input id="examTotalMarks" type="number" min="10" step="1" value="80">
+          </div>
+          <div class="form-group full">
+            <label for="examChapters">Chapters (comma-separated)</label>
+            <textarea id="examChapters" placeholder="Example: Quadratic Equations, Arithmetic Progressions"></textarea>
+          </div>
+          <div class="form-group full">
+            <label for="examAnswers">Student Answers (optional: JSON or normal text)</label>
+            <textarea id="examAnswers" placeholder='JSON: {"Q1":"...", "Q2":"..."} OR plain text: Q1) ... Q2) ...'></textarea>
+          </div>
+        </div>
+        <div class="exam-actions">
+          <button class="start-btn" id="generateExamBtn" type="button">Generate Test</button>
+          <button class="start-btn" id="evaluateExamBtn" type="button" disabled>Evaluate Test</button>
+        </div>
+        <div class="exam-tabs" id="examTabs" style="display:none;">
+          <button class="exam-tab-btn active" type="button" data-tab="paper">Paper</button>
+          <button class="exam-tab-btn" type="button" data-tab="answer_key">Answer Key</button>
+          <button class="exam-tab-btn" type="button" data-tab="evaluation">Evaluation</button>
+          <button class="exam-tab-btn" type="button" data-tab="result">Result</button>
+          <button class="exam-tab-btn" type="button" data-tab="warnings">Warnings</button>
+          <button class="exam-tab-btn" type="button" data-tab="raw">Raw JSON</button>
+        </div>
+        <div class="exam-output exam-panel-content active" id="examPanelPaper">Paper will appear here...</div>
+        <div class="exam-output exam-panel-content" id="examPanelAnswerKey"></div>
+        <div class="exam-output exam-panel-content" id="examPanelEvaluation"></div>
+        <div class="exam-output exam-panel-content" id="examPanelResult"></div>
+        <div class="exam-output exam-panel-content" id="examPanelWarnings"></div>
+        <pre class="exam-output exam-panel-content" id="examOutputRaw"></pre>
+      </div>
     </section>
   </main>
 
@@ -421,6 +566,20 @@
     const messages = document.getElementById('messages');
     const queryInput = document.getElementById('queryInput');
     const sendBtn = document.getElementById('sendBtn');
+    const examClass = document.getElementById('examClass');
+    const examSubject = document.getElementById('examSubject');
+    const examDifficulty = document.getElementById('examDifficulty');
+    const examTotalMarks = document.getElementById('examTotalMarks');
+    const examChapters = document.getElementById('examChapters');
+    const examAnswers = document.getElementById('examAnswers');
+    const generateExamBtn = document.getElementById('generateExamBtn');
+    const examTabs = document.getElementById('examTabs');
+    const examPanelPaper = document.getElementById('examPanelPaper');
+    const examPanelAnswerKey = document.getElementById('examPanelAnswerKey');
+    const examPanelEvaluation = document.getElementById('examPanelEvaluation');
+    const examPanelResult = document.getElementById('examPanelResult');
+    const examPanelWarnings = document.getElementById('examPanelWarnings');
+    const examOutputRaw = document.getElementById('examOutputRaw');
 
     const FALLBACK_CONTEXTS = [
       { class: '10', subject: 'Science' },
@@ -502,12 +661,142 @@
         const data = await res.json();
         sessionId = data.session_id;
         showChat({ class: class_, subject });
+        examClass.value = class_;
+        examSubject.value = subject.toLowerCase().includes('math') ? 'Maths' : 'Science';
         addMessage('bot', data.message);
       } catch (e) {
         showError('Failed to start chat. ' + (e.message || ''));
       } finally {
         startBtn.disabled = false;
         startBtn.textContent = 'Start chat';
+      }
+    }
+
+    function parseStudentAnswers() {
+      let parsedAnswers = {};
+      const answersRaw = examAnswers.value.trim();
+      if (answersRaw) {
+        try {
+          parsedAnswers = JSON.parse(answersRaw);
+        } catch (_) {
+          parsedAnswers = answersRaw;
+        }
+      }
+      return parsedAnswers;
+    }
+
+    async function generateExam() {
+      const chapters = examChapters.value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (chapters.length === 0) {
+        showError('Please provide at least one chapter.');
+        return;
+      }
+
+      const payload = {
+        class: examClass.value,
+        subject: examSubject.value,
+        chapters,
+        difficulty_level: examDifficulty.value,
+        total_marks: parseInt(examTotalMarks.value || '0', 10),
+        paper_pattern: 'CBSE latest pattern',
+        student_answers: {},
+      };
+
+      generateExamBtn.disabled = true;
+      generateExamBtn.textContent = 'Generating...';
+      evaluateExamBtn.disabled = true;
+      examTabs.style.display = 'none';
+      examPanelPaper.textContent = 'Generating exam...';
+      examPanelAnswerKey.textContent = '';
+      examPanelEvaluation.textContent = '';
+      examPanelResult.textContent = '';
+      examPanelWarnings.textContent = '';
+      examOutputRaw.textContent = '';
+
+      try {
+        const res = await fetch(`${API}/exam/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.text();
+        if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
+        let json;
+        try {
+          json = JSON.parse(body);
+          renderExamResponse(json);
+        } catch {
+          examPanelPaper.textContent = body;
+        }
+
+        // After generating paper, enable evaluation if user has answers
+        evaluateExamBtn.disabled = false;
+      } catch (e) {
+        examPanelPaper.textContent = `Error: ${e.message || 'Request failed'}`;
+        showError('Exam generation failed.');
+      } finally {
+        generateExamBtn.disabled = false;
+        generateExamBtn.textContent = 'Generate Test';
+      }
+    }
+
+    async function evaluateExam() {
+      const chapters = examChapters.value
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      if (chapters.length === 0) {
+        showError('Please provide at least one chapter.');
+        return;
+      }
+
+      const parsedAnswers = parseStudentAnswers();
+      if (!parsedAnswers || (typeof parsedAnswers === 'object' && Object.keys(parsedAnswers).length === 0)) {
+        showError('Please enter student answers in the answers box first.');
+        return;
+      }
+
+      const payload = {
+        class: examClass.value,
+        subject: examSubject.value,
+        chapters,
+        difficulty_level: examDifficulty.value,
+        total_marks: parseInt(examTotalMarks.value || '0', 10),
+        paper_pattern: 'CBSE latest pattern',
+        student_answers: parsedAnswers,
+      };
+
+      evaluateExamBtn.disabled = true;
+      evaluateExamBtn.textContent = 'Evaluating...';
+      examTabs.style.display = 'none';
+      examPanelEvaluation.textContent = 'Evaluating student answers...';
+
+      try {
+        const res = await fetch(`${API}/exam/run`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await res.text();
+        if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
+        let json;
+        try {
+          json = JSON.parse(body);
+          renderExamResponse(json);
+        } catch {
+          examPanelEvaluation.textContent = body;
+        }
+      } catch (e) {
+        examPanelEvaluation.textContent = `Error: ${e.message || 'Request failed'}`;
+        showError('Exam evaluation failed.');
+      } finally {
+        evaluateExamBtn.disabled = false;
+        evaluateExamBtn.textContent = 'Evaluate Test';
       }
     }
 
@@ -541,6 +830,89 @@
       toast.textContent = msg;
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 4000);
+    }
+
+    function activateExamTab(tabName) {
+      const buttons = [...examTabs.querySelectorAll('.exam-tab-btn')];
+      buttons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabName);
+      });
+      const panels = [
+        ['paper', examPanelPaper],
+        ['answer_key', examPanelAnswerKey],
+        ['evaluation', examPanelEvaluation],
+        ['result', examPanelResult],
+        ['warnings', examPanelWarnings],
+        ['raw', examOutputRaw]
+      ];
+      panels.forEach(([key, el]) => el.classList.toggle('active', key === tabName));
+    }
+
+    function renderExamResponse(data) {
+      const paper = data?.paper || {};
+      const sections = Array.isArray(paper.sections) ? paper.sections : [];
+      const answerKey = Array.isArray(data?.answer_key) ? data.answer_key : [];
+      const evaluation = Array.isArray(data?.evaluation) ? data.evaluation : [];
+      const result = data?.result || {};
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+
+      const paperLines = [];
+      paperLines.push(`Class: ${paper.class || '-'}`);
+      paperLines.push(`Subject: ${paper.subject || '-'}`);
+      paperLines.push(`Total Marks: ${paper.total_marks ?? '-'}`);
+      paperLines.push('');
+      sections.forEach((section, idx) => {
+        paperLines.push(`${idx + 1}. ${section.section_name || 'Section'}`);
+        const qs = Array.isArray(section.questions) ? section.questions : [];
+        qs.forEach(q => {
+          paperLines.push(`- [${q.question_id || '-'}] (${q.marks ?? 0}m) [${q.chapter || '-'}] ${q.question || ''}`);
+        });
+        paperLines.push('');
+      });
+      examPanelPaper.textContent = paperLines.join('\n').trim() || 'No paper generated.';
+
+      const akLines = [];
+      answerKey.forEach((a, i) => {
+        akLines.push(`${i + 1}. ${a.question_id || '-'}: ${a.question || ''}`);
+        akLines.push(`Answer: ${a.answer || ''}`);
+        akLines.push(`Steps: ${a.steps || ''}`);
+        akLines.push('');
+      });
+      examPanelAnswerKey.textContent = akLines.join('\n').trim() || 'No answer key available.';
+
+      const evalLines = [];
+      evaluation.forEach((e, i) => {
+        evalLines.push(`${i + 1}. ${e.question_id || '-'}: ${e.question || ''}`);
+        evalLines.push(`Student: ${e.student_answer || ''}`);
+        evalLines.push(`Correct: ${e.correct_answer || ''}`);
+        evalLines.push(`Marks: ${e.marks_awarded ?? 0}/${e.max_marks ?? 0}`);
+        evalLines.push(`Feedback: ${e.feedback || ''}`);
+        evalLines.push('');
+      });
+      examPanelEvaluation.textContent = evalLines.join('\n').trim() || 'No evaluation generated.';
+
+      const analysis = result.analysis || {};
+      examPanelResult.textContent =
+`Total Score: ${result.total_score || '-'}
+Percentage: ${result.percentage || '-'}
+Grade: ${result.grade || '-'}
+
+Strong Areas:
+- ${(analysis.strong_areas || []).join('\n- ') || 'N/A'}
+
+Weak Areas:
+- ${(analysis.weak_areas || []).join('\n- ') || 'N/A'}
+
+Suggestions:
+- ${(analysis.suggestions || []).join('\n- ') || 'N/A'}`;
+
+      examPanelWarnings.textContent = warnings.length
+        ? warnings.map((w, i) => `${i + 1}. ${w}`).join('\n')
+        : 'No warnings.';
+
+      examOutputRaw.textContent = JSON.stringify(data, null, 2);
+      examTabs.style.display = 'flex';
+      activateExamTab('paper');
     }
 
     async function sendQuestion() {
@@ -592,6 +964,13 @@
     });
 
     newChatBtn.addEventListener('click', showSetup);
+    generateExamBtn.addEventListener('click', generateExam);
+    evaluateExamBtn.addEventListener('click', evaluateExam);
+    examTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.exam-tab-btn');
+      if (!btn) return;
+      activateExamTab(btn.dataset.tab);
+    });
 
     loadContexts();
   </script>

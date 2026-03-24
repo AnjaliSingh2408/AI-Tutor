@@ -7,6 +7,8 @@ src/aitutor/config.py
 src/aitutor/types.py
 src/aitutor/api/__init__.py
 src/aitutor/api/main.py
+src/aitutor/exam/__init__.py
+src/aitutor/exam/engine.py
 src/aitutor/generation/__init__.py
 src/aitutor/generation/clarifier_llm.py
 src/aitutor/generation/grounded_llm.py
@@ -20,6 +22,8 @@ src/aitutor/rag/__init__.py
 src/aitutor/rag/tutor.py
 src/aitutor/retrieval/__init__.py
 src/aitutor/retrieval/bm25_retriever.py
+src/aitutor/retrieval/langchain_hybrid.py
+src/aitutor/retrieval/query_corrector.py
 src/aitutor/retrieval/reranker.py
 src/aitutor/retrieval/retriever.py
 src/aitutor/vectorstore/__init__.py
