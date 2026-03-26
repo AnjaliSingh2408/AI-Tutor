@@ -16,6 +16,7 @@ src/aitutor/generation/summary_llm.py
 src/aitutor/ingest/__init__.py
 src/aitutor/ingest/book_id.py
 src/aitutor/ingest/chunking.py
+src/aitutor/ingest/pdf_diagrams.py
 src/aitutor/ingest/pdf_extract.py
 src/aitutor/ingest/pipeline.py
 src/aitutor/multimodal/__init__.py

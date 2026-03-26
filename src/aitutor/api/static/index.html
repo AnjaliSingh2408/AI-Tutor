@@ -1,1225 +1,1520 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Tutor — NCERT Chatbot</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0f0f12;
-      --surface: #1a1a1f;
-      --surface-hover: #222228;
-      --border: #2d2d35;
-      --text: #e8e8ed;
-      --text-muted: #8b8b96;
-      --accent: #6366f1;
-      --accent-hover: #818cf8;
-      --success: #22c55e;
-      --user-bubble: #6366f1;
-      --bot-bubble: #2d2d35;
-      --radius: 12px;
-      --radius-sm: 8px;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      font-family: 'DM Sans', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      line-height: 1.6;
-    }
-
-    header {
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-    }
-
-    .logo {
-      font-weight: 700;
-      font-size: 1.25rem;
-      letter-spacing: -0.02em;
-      background: linear-gradient(135deg, var(--accent), #a78bfa);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-
-    .context-badge {
-      font-size: 0.8rem;
-      padding: 0.35rem 0.75rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text-muted);
-    }
-
-    .context-badge strong {
-      color: var(--text);
-    }
-
-    .new-chat-btn {
-      font-size: 0.85rem;
-      padding: 0.4rem 0.9rem;
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--text-muted);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      font-family: inherit;
-      transition: all 0.2s;
-    }
-
-    .new-chat-btn:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    main {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      max-width: 720px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 1.5rem;
-    }
-
-    /* Setup screen */
-    .setup-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      padding: 2rem;
-    }
-
-    .setup-screen h1 {
-      font-size: 1.75rem;
-      font-weight: 600;
-      margin-bottom: 0.5rem;
-      letter-spacing: -0.02em;
-    }
-
-    .setup-screen p {
-      color: var(--text-muted);
-      margin-bottom: 2rem;
-      max-width: 400px;
-    }
-
-    .setup-form {
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-      width: 100%;
-      max-width: 320px;
-    }
-
-    .form-group {
-      text-align: left;
-    }
-
-    .form-group label {
-      display: block;
-      font-size: 0.85rem;
-      font-weight: 500;
-      color: var(--text-muted);
-      margin-bottom: 0.4rem;
-    }
-
-    .form-group select {
-      width: 100%;
-      padding: 0.65rem 1rem;
-      font-size: 1rem;
-      font-family: inherit;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text);
-      cursor: pointer;
-    }
-
-    .form-group select:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    .start-btn {
-      padding: 0.75rem 1.5rem;
-      font-size: 1rem;
-      font-weight: 600;
-      font-family: inherit;
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-
-    .start-btn:hover {
-      background: var(--accent-hover);
-    }
-
-    .start-btn:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-    }
-
-    /* Chat screen */
-    .chat-screen {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-    }
-
-    .chat-screen.hidden {
-      display: none;
-    }
-
-    .setup-screen.hidden {
-      display: none;
-    }
-
-    .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1rem 0;
-      display: flex;
-      flex-direction: column;
-      gap: 1rem;
-    }
-
-    .message {
-      display: flex;
-      gap: 0.75rem;
-      max-width: 100%;
-      animation: fadeIn 0.3s ease;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(4px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    .message.user {
-      flex-direction: row-reverse;
-    }
-
-    .message-avatar {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1rem;
-    }
-
-    .message.user .message-avatar {
-      background: var(--user-bubble);
-    }
-
-    .message.bot .message-avatar {
-      background: var(--bot-bubble);
-      border: 1px solid var(--border);
-    }
-
-    .message-bubble {
-      padding: 0.9rem 1.2rem;
-      border-radius: var(--radius);
-      max-width: 85%;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .message.user .message-bubble {
-      background: var(--user-bubble);
-      color: white;
-    }
-
-    .message.bot .message-bubble {
-      background: var(--bot-bubble);
-      border: 1px solid var(--border);
-    }
-
-    .message-bubble p {
-      margin-bottom: 0.5rem;
-    }
-
-    .message-bubble p:last-child {
-      margin-bottom: 0;
-    }
-
-    .typing {
-      display: flex;
-      gap: 4px;
-      padding: 0.5rem 0;
-    }
-
-    .typing span {
-      width: 6px;
-      height: 6px;
-      background: var(--text-muted);
-      border-radius: 50%;
-      animation: bounce 1.4s ease-in-out infinite;
-    }
-
-    .typing span:nth-child(2) { animation-delay: 0.2s; }
-    .typing span:nth-child(3) { animation-delay: 0.4s; }
-
-    @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-      40% { transform: scale(1.2); opacity: 1; }
-    }
-
-    .input-area {
-      display: flex;
-      gap: 0.5rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      align-items: flex-end;
-    }
-
-    .icon-btn {
-      padding: 0;
-      width: 48px;
-      height: 48px;
-      font-size: 1.25rem;
-      background: var(--surface);
-      color: var(--text-muted);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.2s;
-      flex-shrink: 0;
-    }
-
-    .icon-btn:hover:not(:disabled) {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-    
-    .icon-btn.recording {
-      color: #ef4444;
-      border-color: #ef4444;
-      animation: pulseRecord 1.5s infinite;
-    }
-
-    @keyframes pulseRecord {
-      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-    }
-
-    .message-bubble img {
-      max-width: 100%;
-      border-radius: var(--radius-sm);
-      margin-top: 0.5rem;
-    }
-
-    .input-area textarea {
-      flex: 1;
-      min-height: 48px;
-      max-height: 120px;
-      padding: 0.75rem 1rem;
-      font-size: 1rem;
-      font-family: inherit;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text);
-      resize: none;
-      transition: border-color 0.2s;
-    }
-
-    .input-area textarea::placeholder {
-      color: var(--text-muted);
-    }
-
-    .input-area textarea:focus {
-      outline: none;
-      border-color: var(--accent);
-    }
-
-    .send-btn {
-      padding: 0 1.25rem;
-      font-size: 1rem;
-      font-family: inherit;
-      font-weight: 500;
-      background: var(--accent);
-      color: white;
-      border: none;
-      border-radius: var(--radius-sm);
-      cursor: pointer;
-      transition: background 0.2s;
-      flex-shrink: 0;
-    }
-
-    .send-btn:hover:not(:disabled) {
-      background: var(--accent-hover);
-    }
-
-    .send-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .error-toast {
-      position: fixed;
-      bottom: 1.5rem;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 0.75rem 1.25rem;
-      background: #dc2626;
-      color: white;
-      border-radius: var(--radius-sm);
-      font-size: 0.9rem;
-      z-index: 100;
-      animation: fadeIn 0.3s ease;
-    }
-
-    .exam-panel {
-      margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid var(--border);
-      display: grid;
-      gap: 0.75rem;
-    }
-
-    .exam-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.75rem;
-    }
-
-    .exam-grid .form-group textarea,
-    .exam-grid .form-group input,
-    .exam-grid .form-group select {
-      width: 100%;
-      padding: 0.65rem 0.75rem;
-      font-size: 0.95rem;
-      font-family: inherit;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      color: var(--text);
-    }
-
-    .exam-grid .form-group textarea {
-      min-height: 72px;
-      resize: vertical;
-    }
-
-    .exam-grid .full {
-      grid-column: 1 / -1;
-    }
-
-    .exam-actions {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-
-    .exam-output {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 0.75rem;
-      max-height: 280px;
-      overflow: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.82rem;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .exam-tabs {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-    }
-
-    .exam-tab-btn {
-      font-size: 0.82rem;
-      padding: 0.35rem 0.65rem;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      background: transparent;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-family: inherit;
-    }
-
-    .exam-tab-btn.active {
-      border-color: var(--accent);
-      color: white;
-      background: var(--accent);
-    }
-
-    .exam-panel-content {
-      display: none;
-    }
-
-    .exam-panel-content.active {
-      display: block;
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <span class="logo">AI Tutor</span>
-    <span class="context-badge" id="contextBadge" style="display: none;">
-      Class <strong id="contextClass">—</strong>, <strong id="contextSubject">—</strong>
-    </span>
-    <button class="new-chat-btn" id="newChatBtn" style="display: none;">New chat</button>
-  </header>
-
-  <main>
-    <section class="setup-screen" id="setupScreen">
-      <h1>Start your NCERT study session</h1>
-      <p>Choose your class and subject once. All questions in this chat will use the same context.</p>
-      <form class="setup-form" id="setupForm">
-        <div class="form-group">
-          <label for="classSelect">Class</label>
-          <select id="classSelect" required>
-            <option value="">Select class</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label for="subjectSelect">Subject</label>
-          <select id="subjectSelect" required>
-            <option value="">Select subject</option>
-          </select>
-        </div>
-        <button type="submit" class="start-btn" id="startBtn">Start chat</button>
-      </form>
-    </section>
-
-    <section class="chat-screen hidden" id="chatScreen">
-      <div class="messages" id="messages"></div>
-      <div class="input-area" style="flex-wrap: wrap;">
-        <div id="imagePreviewContainer" style="display: none; width: 100%; margin-bottom: 0.5rem; position: relative; width: max-content;">
-           <img id="imagePreview" src="" style="height: 64px; border-radius: var(--radius-sm); border: 1px solid var(--border);" />
-           <button id="cancelImageBtn" style="position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;">✕</button>
-        </div>
-        <div style="display: flex; gap: 0.5rem; width: 100%;">
-          <button class="icon-btn" id="diagramBtn" type="button" title="Upload Diagram">🖼️</button>
-          <input type="file" id="diagramInput" accept="image/png, image/jpeg" style="display: none;" />
-          <button class="icon-btn" id="micBtn" type="button" title="Hold to Record">🎤</button>
-          <textarea
-            id="queryInput"
-            placeholder="Ask your NCERT question..."
-            rows="1"
-          ></textarea>
-          <button class="send-btn" id="sendBtn" type="button">Send</button>
-        </div>
-      </div>
-
-      <div class="exam-panel">
-        <h3 style="font-size:1rem;">CBSE Exam Generator</h3>
-        <div class="exam-grid">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Tutor — NCERT Chatbot</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0f0f12;
+        --surface: #1a1a1f;
+        --surface-hover: #222228;
+        --border: #2d2d35;
+        --text: #e8e8ed;
+        --text-muted: #8b8b96;
+        --accent: #6366f1;
+        --accent-hover: #818cf8;
+        --success: #22c55e;
+        --user-bubble: #6366f1;
+        --bot-bubble: #2d2d35;
+        --radius: 12px;
+        --radius-sm: 8px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "DM Sans", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        line-height: 1.6;
+      }
+
+      header {
+        padding: 1rem 1.5rem;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      .logo {
+        font-weight: 700;
+        font-size: 1.25rem;
+        letter-spacing: -0.02em;
+        background: linear-gradient(135deg, var(--accent), #a78bfa);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .context-badge {
+        font-size: 0.8rem;
+        padding: 0.35rem 0.75rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+      }
+
+      .context-badge strong {
+        color: var(--text);
+      }
+
+      .new-chat-btn {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.9rem;
+        background: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-family: inherit;
+        transition: all 0.2s;
+      }
+
+      .new-chat-btn:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        max-width: 720px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 1.5rem;
+      }
+
+      /* Setup screen */
+      .setup-screen {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding: 2rem;
+      }
+
+      .setup-screen h1 {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      .setup-screen p {
+        color: var(--text-muted);
+        margin-bottom: 2rem;
+        max-width: 400px;
+      }
+
+      .setup-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        width: 100%;
+        max-width: 320px;
+      }
+
+      .form-group {
+        text-align: left;
+      }
+
+      .form-group label {
+        display: block;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: var(--text-muted);
+        margin-bottom: 0.4rem;
+      }
+
+      .form-group select {
+        width: 100%;
+        padding: 0.65rem 1rem;
+        font-size: 1rem;
+        font-family: inherit;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .form-group select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .start-btn {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+        font-family: inherit;
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+
+      .start-btn:hover {
+        background: var(--accent-hover);
+      }
+
+      .start-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      /* Chat screen */
+      .chat-screen {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+      }
+
+      .chat-screen.hidden {
+        display: none;
+      }
+
+      .setup-screen.hidden {
+        display: none;
+      }
+
+      .ask-mode-message,
+      .test-mode-message {
+        text-align: center;
+        padding: 1.2rem;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        margin: 1rem 0;
+      }
+
+      .ask-mode-message h3,
+      .test-mode-message h3 {
+        color: var(--accent);
+        margin-bottom: 0.5rem;
+      }
+
+      .messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .message {
+        display: flex;
+        gap: 0.75rem;
+        max-width: 100%;
+        animation: fadeIn 0.3s ease;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .message.user {
+        flex-direction: row-reverse;
+      }
+
+      .message-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+      }
+
+      .message.user .message-avatar {
+        background: var(--user-bubble);
+      }
+
+      .message.bot .message-avatar {
+        background: var(--bot-bubble);
+        border: 1px solid var(--border);
+      }
+
+      .message-bubble {
+        padding: 0.9rem 1.2rem;
+        border-radius: var(--radius);
+        max-width: 85%;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .message.user .message-bubble {
+        background: var(--user-bubble);
+        color: white;
+      }
+
+      .message.bot .message-bubble {
+        background: var(--bot-bubble);
+        border: 1px solid var(--border);
+      }
+
+      .message-bubble p {
+        margin-bottom: 0.5rem;
+      }
+
+      .message-bubble p:last-child {
+        margin-bottom: 0;
+      }
+
+      .typing {
+        display: flex;
+        gap: 4px;
+        padding: 0.5rem 0;
+      }
+
+      .typing span {
+        width: 6px;
+        height: 6px;
+        background: var(--text-muted);
+        border-radius: 50%;
+        animation: bounce 1.4s ease-in-out infinite;
+      }
+
+      .typing span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+      .typing span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes bounce {
+        0%,
+        80%,
+        100% {
+          transform: scale(0.8);
+          opacity: 0.5;
+        }
+        40% {
+          transform: scale(1.2);
+          opacity: 1;
+        }
+      }
+
+      .input-area {
+        display: flex;
+        gap: 0.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+        align-items: flex-end;
+      }
+
+      .icon-btn {
+        padding: 0;
+        width: 48px;
+        height: 48px;
+        font-size: 1.25rem;
+        background: var(--surface);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        flex-shrink: 0;
+      }
+
+      .icon-btn:hover:not(:disabled) {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .icon-btn.recording {
+        color: #ef4444;
+        border-color: #ef4444;
+        animation: pulseRecord 1.5s infinite;
+      }
+
+      @keyframes pulseRecord {
+        0% {
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+        }
+        70% {
+          box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+        }
+        100% {
+          box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        }
+      }
+
+      .message-bubble img {
+        max-width: 100%;
+        border-radius: var(--radius-sm);
+        margin-top: 0.5rem;
+      }
+
+      .input-area textarea {
+        flex: 1;
+        min-height: 48px;
+        max-height: 120px;
+        padding: 0.75rem 1rem;
+        font-size: 1rem;
+        font-family: inherit;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+        resize: none;
+        transition: border-color 0.2s;
+      }
+
+      .input-area textarea::placeholder {
+        color: var(--text-muted);
+      }
+
+      .input-area textarea:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      .send-btn {
+        padding: 0 1.25rem;
+        font-size: 1rem;
+        font-family: inherit;
+        font-weight: 500;
+        background: var(--accent);
+        color: white;
+        border: none;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+
+      .send-btn:hover:not(:disabled) {
+        background: var(--accent-hover);
+      }
+
+      .send-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .error-toast {
+        position: fixed;
+        bottom: 1.5rem;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 0.75rem 1.25rem;
+        background: #dc2626;
+        color: white;
+        border-radius: var(--radius-sm);
+        font-size: 0.9rem;
+        z-index: 100;
+        animation: fadeIn 0.3s ease;
+      }
+
+      .exam-panel {
+        display: none;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+        gap: 0.75rem;
+      }
+
+      .exam-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .exam-grid .form-group textarea,
+      .exam-grid .form-group input,
+      .exam-grid .form-group select,
+      .exam-panel .form-group textarea,
+      .exam-panel .form-group input,
+      .exam-panel .form-group select {
+        width: 100%;
+        padding: 0.65rem 0.75rem;
+        font-size: 0.95rem;
+        font-family: inherit;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        color: var(--text);
+      }
+
+      .exam-grid .form-group textarea,
+      .exam-panel .form-group textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+
+      .exam-grid .full {
+        grid-column: 1 / -1;
+      }
+
+      .exam-actions {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+
+      .exam-output {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.75rem;
+        max-height: 280px;
+        overflow: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.82rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .exam-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+      }
+
+      .exam-tab-btn {
+        font-size: 0.82rem;
+        padding: 0.35rem 0.65rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-family: inherit;
+      }
+
+      .exam-tab-btn.active {
+        border-color: var(--accent);
+        color: white;
+        background: var(--accent);
+      }
+
+      .exam-panel-content {
+        display: none;
+      }
+
+      .exam-panel-content.active {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="logo">AI Tutor</span>
+      <span class="context-badge" id="contextBadge" style="display: none">
+        Class <strong id="contextClass">—</strong>,
+        <strong id="contextSubject">—</strong>
+      </span>
+      <button class="new-chat-btn" id="newChatBtn" style="display: none">
+        New chat
+      </button>
+    </header>
+
+    <main>
+      <section class="setup-screen" id="setupScreen">
+        <h1>Start your NCERT study session</h1>
+        <p>
+          Choose your class and subject once. All questions in this chat will
+          use the same context.
+        </p>
+        <form class="setup-form" id="setupForm">
           <div class="form-group">
-            <label for="examClass">Class</label>
-            <select id="examClass">
-              <option value="9">Class 9</option>
-              <option value="10" selected>Class 10</option>
+            <label for="classSelect">Class</label>
+            <select id="classSelect" required>
+              <option value="">Select class</option>
             </select>
           </div>
           <div class="form-group">
-            <label for="examSubject">Subject</label>
-            <select id="examSubject">
-              <option value="Maths">Maths</option>
-              <option value="Science">Science</option>
+            <label for="subjectSelect">Subject</label>
+            <select id="subjectSelect" required>
+              <option value="">Select subject</option>
             </select>
           </div>
           <div class="form-group">
-            <label for="examDifficulty">Difficulty</label>
-            <select id="examDifficulty">
-              <option value="easy">easy</option>
-              <option value="medium" selected>medium</option>
-              <option value="hard">hard</option>
+            <label for="modeSelect">Mode</label>
+            <select id="modeSelect" required>
+              <option value="ask">Ask Question</option>
+              <option value="test">Give Test</option>
             </select>
           </div>
-          <div class="form-group">
-            <label for="examTotalMarks">Total Marks</label>
-            <input id="examTotalMarks" type="number" min="10" step="1" value="80">
+          <button type="submit" class="start-btn" id="startBtn">
+            Start chat
+          </button>
+        </form>
+      </section>
+
+      <section class="chat-screen hidden" id="chatScreen">
+        <!-- Ask/Test mode indication -->
+        <div class="ask-mode-message" id="askModeMessage">
+          <h3 id="modeHeading">Ask Question Mode Active</h3>
+        </div>
+
+        <div class="messages" id="messages"></div>
+        <div class="input-area" style="flex-wrap: wrap">
+          <div
+            id="imagePreviewContainer"
+            style="
+              display: none;
+              width: 100%;
+              margin-bottom: 0.5rem;
+              position: relative;
+              width: max-content;
+            "
+          >
+            <img
+              id="imagePreview"
+              src=""
+              style="
+                height: 64px;
+                border-radius: var(--radius-sm);
+                border: 1px solid var(--border);
+              "
+            />
+            <button
+              id="cancelImageBtn"
+              style="
+                position: absolute;
+                top: -6px;
+                right: -6px;
+                background: #ef4444;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 20px;
+                height: 20px;
+                cursor: pointer;
+                font-size: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+              "
+            >
+              ✕
+            </button>
           </div>
-          <div class="form-group full">
-            <label for="examChapters">Chapters (comma-separated)</label>
-            <textarea id="examChapters" placeholder="Example: Quadratic Equations, Arithmetic Progressions"></textarea>
-          </div>
-          <div class="form-group full">
-            <label for="examAnswers">Student Answers (optional: JSON or normal text)</label>
-            <textarea id="examAnswers" placeholder='JSON: {"Q1":"...", "Q2":"..."} OR plain text: Q1) ... Q2) ...'></textarea>
+          <div style="display: flex; gap: 0.5rem; width: 100%">
+            <button
+              class="icon-btn"
+              id="diagramBtn"
+              type="button"
+              title="Upload Diagram"
+            >
+              🖼️
+            </button>
+            <input
+              type="file"
+              id="diagramInput"
+              accept="image/png, image/jpeg"
+              style="display: none"
+            />
+            <button
+              class="icon-btn"
+              id="micBtn"
+              type="button"
+              title="Hold to Record"
+            >
+              🎤
+            </button>
+            <textarea
+              id="queryInput"
+              placeholder="Ask your NCERT question..."
+              rows="1"
+            ></textarea>
+            <button class="send-btn" id="sendBtn" type="button">Send</button>
           </div>
         </div>
-        <div class="exam-actions">
-          <button class="start-btn" id="generateExamBtn" type="button">Generate Test</button>
-          <button class="start-btn" id="evaluateExamBtn" type="button" disabled>Evaluate Test</button>
+
+        <div class="exam-panel">
+          <h3 style="font-size: 1rem">CBSE Exam Generator</h3>
+          <div class="exam-grid">
+            <div class="form-group">
+              <label for="examClass">Class</label>
+              <select id="examClass">
+                <option value="9">Class 9</option>
+                <option value="10" selected>Class 10</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="examSubject">Subject</label>
+              <select id="examSubject">
+                <option value="Maths">Maths</option>
+                <option value="Science">Science</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="examDifficulty">Difficulty</label>
+              <select id="examDifficulty">
+                <option value="easy">easy</option>
+                <option value="medium" selected>medium</option>
+                <option value="hard">hard</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="examTotalMarks">Total Marks</label>
+              <input
+                id="examTotalMarks"
+                type="number"
+                min="10"
+                step="1"
+                value="80"
+              />
+            </div>
+            <div class="form-group full">
+              <label for="examChapters">Chapters (comma-separated)</label>
+              <textarea
+                id="examChapters"
+                placeholder="Example: Quadratic Equations, Arithmetic Progressions"
+              ></textarea>
+            </div>
+          </div>
+          <div class="exam-actions">
+            <button class="start-btn" id="generateExamBtn" type="button">
+              Give Test
+            </button>
+          </div>
+          <div id="examAnswerSection" style="display: none">
+            <div class="form-group full">
+              <label for="examAnswers"
+                >Student Answers (optional: JSON or normal text)</label
+              >
+              <textarea
+                id="examAnswers"
+                rows="10"
+                style="min-height: 200px"
+                placeholder='JSON: {"Q1":"...", "Q2":"..."} OR plain text: Q1) ... Q2) ...'
+              ></textarea>
+            </div>
+            <div class="exam-actions" style="margin-top: 0.75rem">
+              <button
+                class="start-btn"
+                id="evaluateExamBtn"
+                type="button"
+                disabled
+              >
+                Evaluate Test
+              </button>
+            </div>
+          </div>
+          <div class="exam-tabs" id="examTabs" style="display: none">
+            <button class="exam-tab-btn active" type="button" data-tab="paper">
+              Paper
+            </button>
+            <button class="exam-tab-btn" type="button" data-tab="answer_key">
+              Answer Key
+            </button>
+            <button class="exam-tab-btn" type="button" data-tab="evaluation">
+              Evaluation
+            </button>
+            <button class="exam-tab-btn" type="button" data-tab="result">
+              Result
+            </button>
+            <button class="exam-tab-btn" type="button" data-tab="warnings">
+              Warnings
+            </button>
+            <button class="exam-tab-btn" type="button" data-tab="raw">
+              Raw JSON
+            </button>
+          </div>
+          <div
+            class="exam-output exam-panel-content active"
+            id="examPanelPaper"
+          >
+            Paper will appear here...
+          </div>
+          <div
+            class="exam-output exam-panel-content"
+            id="examPanelAnswerKey"
+          ></div>
+          <div
+            class="exam-output exam-panel-content"
+            id="examPanelEvaluation"
+          ></div>
+          <div
+            class="exam-output exam-panel-content"
+            id="examPanelResult"
+          ></div>
+          <div
+            class="exam-output exam-panel-content"
+            id="examPanelWarnings"
+          ></div>
+          <pre class="exam-output exam-panel-content" id="examOutputRaw"></pre>
         </div>
-        <div class="exam-tabs" id="examTabs" style="display:none;">
-          <button class="exam-tab-btn active" type="button" data-tab="paper">Paper</button>
-          <button class="exam-tab-btn" type="button" data-tab="answer_key">Answer Key</button>
-          <button class="exam-tab-btn" type="button" data-tab="evaluation">Evaluation</button>
-          <button class="exam-tab-btn" type="button" data-tab="result">Result</button>
-          <button class="exam-tab-btn" type="button" data-tab="warnings">Warnings</button>
-          <button class="exam-tab-btn" type="button" data-tab="raw">Raw JSON</button>
-        </div>
-        <div class="exam-output exam-panel-content active" id="examPanelPaper">Paper will appear here...</div>
-        <div class="exam-output exam-panel-content" id="examPanelAnswerKey"></div>
-        <div class="exam-output exam-panel-content" id="examPanelEvaluation"></div>
-        <div class="exam-output exam-panel-content" id="examPanelResult"></div>
-        <div class="exam-output exam-panel-content" id="examPanelWarnings"></div>
-        <pre class="exam-output exam-panel-content" id="examOutputRaw"></pre>
-      </div>
-    </section>
-  </main>
+      </section>
+    </main>
 
-  <script>
-    const API = '/api';
-    let sessionId = null;
+    <script>
+      const API = "/api";
+      let sessionId = null;
 
-    const setupScreen = document.getElementById('setupScreen');
-    const chatScreen = document.getElementById('chatScreen');
-    const contextBadge = document.getElementById('contextBadge');
-    const contextClass = document.getElementById('contextClass');
-    const contextSubject = document.getElementById('contextSubject');
-    const newChatBtn = document.getElementById('newChatBtn');
-    const setupForm = document.getElementById('setupForm');
-    const classSelect = document.getElementById('classSelect');
-    const subjectSelect = document.getElementById('subjectSelect');
-    const startBtn = document.getElementById('startBtn');
-    const messages = document.getElementById('messages');
-    const queryInput = document.getElementById('queryInput');
-    const sendBtn = document.getElementById('sendBtn');
-    const examClass = document.getElementById('examClass');
-    const examSubject = document.getElementById('examSubject');
-    const examDifficulty = document.getElementById('examDifficulty');
-    const examTotalMarks = document.getElementById('examTotalMarks');
-    const examChapters = document.getElementById('examChapters');
-    const examAnswers = document.getElementById('examAnswers');
-    const generateExamBtn = document.getElementById('generateExamBtn');
-    const examTabs = document.getElementById('examTabs');
-    const examPanelPaper = document.getElementById('examPanelPaper');
-    const examPanelAnswerKey = document.getElementById('examPanelAnswerKey');
-    const examPanelEvaluation = document.getElementById('examPanelEvaluation');
-    const examPanelResult = document.getElementById('examPanelResult');
-    const examPanelWarnings = document.getElementById('examPanelWarnings');
-    const examOutputRaw = document.getElementById('examOutputRaw');
-    
-    const diagramBtn = document.getElementById('diagramBtn');
-    const diagramInput = document.getElementById('diagramInput');
-    const micBtn = document.getElementById('micBtn');
+      const setupScreen = document.getElementById("setupScreen");
+      const chatScreen = document.getElementById("chatScreen");
+      const contextBadge = document.getElementById("contextBadge");
+      const contextClass = document.getElementById("contextClass");
+      const contextSubject = document.getElementById("contextSubject");
+      const newChatBtn = document.getElementById("newChatBtn");
+      const setupForm = document.getElementById("setupForm");
+      const classSelect = document.getElementById("classSelect");
+      const subjectSelect = document.getElementById("subjectSelect");
+      const modeSelect = document.getElementById("modeSelect");
+      const startBtn = document.getElementById("startBtn");
+      const messages = document.getElementById("messages");
+      const queryInput = document.getElementById("queryInput");
+      const sendBtn = document.getElementById("sendBtn");
+      const examPanel = document.querySelector(".exam-panel");
+      const examClass = document.getElementById("examClass");
+      const examSubject = document.getElementById("examSubject");
+      const examDifficulty = document.getElementById("examDifficulty");
+      const examTotalMarks = document.getElementById("examTotalMarks");
+      const examChapters = document.getElementById("examChapters");
+      const examAnswers = document.getElementById("examAnswers");
+      const examAnswerSection = document.getElementById("examAnswerSection");
+      const generateExamBtn = document.getElementById("generateExamBtn");
+      const examTabs = document.getElementById("examTabs");
+      const examPanelPaper = document.getElementById("examPanelPaper");
+      const examPanelAnswerKey = document.getElementById("examPanelAnswerKey");
+      const examPanelEvaluation = document.getElementById(
+        "examPanelEvaluation",
+      );
+      const examPanelResult = document.getElementById("examPanelResult");
+      const examPanelWarnings = document.getElementById("examPanelWarnings");
+      const examOutputRaw = document.getElementById("examOutputRaw");
 
-    const imagePreviewContainer = document.getElementById('imagePreviewContainer');
-    const imagePreview = document.getElementById('imagePreview');
-    const cancelImageBtn = document.getElementById('cancelImageBtn');
-    let pendingImageFile = null;
+      // Mode selector elements
+      let currentMode = "ask"; // Default mode
 
-    let mediaRecorder = null;
-    let audioChunks = [];
-    let isRecording = false;
+      const diagramBtn = document.getElementById("diagramBtn");
+      const diagramInput = document.getElementById("diagramInput");
+      const micBtn = document.getElementById("micBtn");
 
-    const FALLBACK_CONTEXTS = [
-      { class: '10', subject: 'Science' },
-      { class: '10', subject: 'Mathematics' },
-      { class: '9', subject: 'Science' },
-      { class: '9', subject: 'Mathematics' },
-      { class: '8', subject: 'Science' },
-      { class: '8', subject: 'Mathematics' },
-    ];
+      const imagePreviewContainer = document.getElementById(
+        "imagePreviewContainer",
+      );
+      const imagePreview = document.getElementById("imagePreview");
+      const cancelImageBtn = document.getElementById("cancelImageBtn");
+      let pendingImageFile = null;
 
-    function populateDropdowns(data) {
-      if (!Array.isArray(data) || data.length === 0) data = FALLBACK_CONTEXTS;
-      const classSet = new Set();
-      const subjectSet = new Set();
-      data.forEach(c => {
-        if (c && (c.class != null) && (c.subject != null)) {
-          classSet.add(String(c.class));
-          subjectSet.add(String(c.subject));
-        }
-      });
-      if (classSet.size === 0 || subjectSet.size === 0) {
-        FALLBACK_CONTEXTS.forEach(c => {
-          classSet.add(String(c.class));
-          subjectSet.add(String(c.subject));
-        });
-      }
-      const classes = [...classSet].sort((a, b) => parseInt(a, 10) - parseInt(b, 10) || String(a).localeCompare(b));
-      const subjects = [...subjectSet].sort();
-      classSelect.innerHTML = '<option value="">Select class</option>' +
-        classes.map(c => `<option value="${c}">Class ${c}</option>`).join('');
-      subjectSelect.innerHTML = '<option value="">Select subject</option>' +
-        subjects.map(s => `<option value="${s}">${s}</option>`).join('');
-      classSelect.value = data[0]?.class || classes[0] || '';
-      subjectSelect.value = data[0]?.subject || subjects[0] || '';
-    }
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let isRecording = false;
 
-    async function loadContexts() {
-      try {
-        const res = await fetch(`${API}/contexts`);
-        const data = res.ok ? await res.json() : [];
-        populateDropdowns(data);
-      } catch (e) {
-        populateDropdowns(FALLBACK_CONTEXTS);
-      }
-    }
-
-    function showSetup() {
-      sessionId = null;
-      setupScreen.classList.remove('hidden');
-      chatScreen.classList.add('hidden');
-      contextBadge.style.display = 'none';
-      newChatBtn.style.display = 'none';
-      messages.innerHTML = '';
-    }
-
-    function showChat(ctx) {
-      setupScreen.classList.add('hidden');
-      chatScreen.classList.remove('hidden');
-      contextBadge.style.display = 'inline-block';
-      newChatBtn.style.display = 'inline-block';
-      contextClass.textContent = ctx.class;
-      contextSubject.textContent = ctx.subject;
-      queryInput.focus();
-    }
-
-    async function startChat() {
-      const class_ = classSelect.value?.trim();
-      const subject = subjectSelect.value?.trim();
-      if (!class_ || !subject) return;
-      startBtn.disabled = true;
-      startBtn.textContent = 'Starting...';
-      try {
-        const res = await fetch(`${API}/chat/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ class: class_, subject }),
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-        sessionId = data.session_id;
-        showChat({ class: class_, subject });
-        examClass.value = class_;
-        examSubject.value = subject.toLowerCase().includes('math') ? 'Maths' : 'Science';
-        addMessage('bot', data.message);
-      } catch (e) {
-        showError('Failed to start chat. ' + (e.message || ''));
-      } finally {
-        startBtn.disabled = false;
-        startBtn.textContent = 'Start chat';
-      }
-    }
-
-    function parseStudentAnswers() {
-      let parsedAnswers = {};
-      const answersRaw = examAnswers.value.trim();
-      if (answersRaw) {
-        try {
-          parsedAnswers = JSON.parse(answersRaw);
-        } catch (_) {
-          parsedAnswers = answersRaw;
-        }
-      }
-      return parsedAnswers;
-    }
-
-    async function generateExam() {
-      const chapters = examChapters.value
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      if (chapters.length === 0) {
-        showError('Please provide at least one chapter.');
-        return;
-      }
-
-      const payload = {
-        class: examClass.value,
-        subject: examSubject.value,
-        chapters,
-        difficulty_level: examDifficulty.value,
-        total_marks: parseInt(examTotalMarks.value || '0', 10),
-        paper_pattern: 'CBSE latest pattern',
-        student_answers: {},
-      };
-
-      generateExamBtn.disabled = true;
-      generateExamBtn.textContent = 'Generating...';
-      evaluateExamBtn.disabled = true;
-      examTabs.style.display = 'none';
-      examPanelPaper.textContent = 'Generating exam...';
-      examPanelAnswerKey.textContent = '';
-      examPanelEvaluation.textContent = '';
-      examPanelResult.textContent = '';
-      examPanelWarnings.textContent = '';
-      examOutputRaw.textContent = '';
-
-      try {
-        const res = await fetch(`${API}/exam/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const body = await res.text();
-        if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
-        let json;
-        try {
-          json = JSON.parse(body);
-          renderExamResponse(json);
-        } catch {
-          examPanelPaper.textContent = body;
-        }
-
-        // After generating paper, enable evaluation if user has answers
-        evaluateExamBtn.disabled = false;
-      } catch (e) {
-        examPanelPaper.textContent = `Error: ${e.message || 'Request failed'}`;
-        showError('Exam generation failed.');
-      } finally {
-        generateExamBtn.disabled = false;
-        generateExamBtn.textContent = 'Generate Test';
-      }
-    }
-
-    async function evaluateExam() {
-      const chapters = examChapters.value
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean);
-
-      if (chapters.length === 0) {
-        showError('Please provide at least one chapter.');
-        return;
-      }
-
-      const parsedAnswers = parseStudentAnswers();
-      if (!parsedAnswers || (typeof parsedAnswers === 'object' && Object.keys(parsedAnswers).length === 0)) {
-        showError('Please enter student answers in the answers box first.');
-        return;
-      }
-
-      const payload = {
-        class: examClass.value,
-        subject: examSubject.value,
-        chapters,
-        difficulty_level: examDifficulty.value,
-        total_marks: parseInt(examTotalMarks.value || '0', 10),
-        paper_pattern: 'CBSE latest pattern',
-        student_answers: parsedAnswers,
-      };
-
-      evaluateExamBtn.disabled = true;
-      evaluateExamBtn.textContent = 'Evaluating...';
-      examTabs.style.display = 'none';
-      examPanelEvaluation.textContent = 'Evaluating student answers...';
-
-      try {
-        const res = await fetch(`${API}/exam/run`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const body = await res.text();
-        if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
-        let json;
-        try {
-          json = JSON.parse(body);
-          renderExamResponse(json);
-        } catch {
-          examPanelEvaluation.textContent = body;
-        }
-      } catch (e) {
-        examPanelEvaluation.textContent = `Error: ${e.message || 'Request failed'}`;
-        showError('Exam evaluation failed.');
-      } finally {
-        evaluateExamBtn.disabled = false;
-        evaluateExamBtn.textContent = 'Evaluate Test';
-      }
-    }
-
-    function addMessage(role, text, isTyping = false) {
-      const div = document.createElement('div');
-      div.className = `message ${role}`;
-      const avatar = role === 'user' ? '👤' : '📚';
-      div.innerHTML = `
-        <div class="message-avatar">${avatar}</div>
-        <div class="message-bubble">${isTyping ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div>
-      `;
-      messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
-      return div;
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML.replace(/\n/g, '<br>');
-    }
-
-    function playTTS(text, btn) {
-      if (!('speechSynthesis' in window)) {
-        showError('Text-to-speech not supported in this browser.');
-        return;
-      }
-      if (window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
-        btn.textContent = '🔊 Read Aloud';
-        return;
-      }
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.onstart = () => { btn.textContent = '⏹️ Stop Audio'; };
-      utterance.onend = () => { btn.textContent = '🔊 Read Aloud'; };
-      utterance.onerror = () => { btn.textContent = '🔊 Read Aloud'; };
-      window.speechSynthesis.speak(utterance);
-    }
-
-    function updateBubbleToText(el, text, spokenText = null) {
-      const bubble = el.querySelector('.message-bubble');
-      if (!bubble) return;
-      
-      bubble.innerHTML = escapeHtml(text);
-      
-      const isBot = el.classList.contains('bot');
-      if (isBot && text) {
-        const actionContainer = document.createElement('div');
-        actionContainer.style.marginTop = '0.75rem';
-        actionContainer.style.paddingTop = '0.5rem';
-        actionContainer.style.borderTop = '1px solid var(--border)';
-        actionContainer.style.display = 'flex';
-        
-        const ttsBtn = document.createElement('button');
-        ttsBtn.className = 'icon-btn';
-        ttsBtn.style.width = 'auto';
-        ttsBtn.style.height = '28px';
-        ttsBtn.style.padding = '0 0.5rem';
-        ttsBtn.style.fontSize = '0.8rem';
-        ttsBtn.title = "Play Audio";
-        ttsBtn.textContent = '🔊 Read Aloud';
-        const audioText = spokenText || text;
-        ttsBtn.onclick = () => playTTS(audioText, ttsBtn);
-        
-        actionContainer.appendChild(ttsBtn);
-        bubble.appendChild(actionContainer);
-      }
-    }
-
-    function showError(msg) {
-      const toast = document.createElement('div');
-      toast.className = 'error-toast';
-      toast.textContent = msg;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 4000);
-    }
-
-    function activateExamTab(tabName) {
-      const buttons = [...examTabs.querySelectorAll('.exam-tab-btn')];
-      buttons.forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tabName);
-      });
-      const panels = [
-        ['paper', examPanelPaper],
-        ['answer_key', examPanelAnswerKey],
-        ['evaluation', examPanelEvaluation],
-        ['result', examPanelResult],
-        ['warnings', examPanelWarnings],
-        ['raw', examOutputRaw]
+      const FALLBACK_CONTEXTS = [
+        { class: "10", subject: "Science" },
+        { class: "10", subject: "Mathematics" },
+        { class: "9", subject: "Science" },
+        { class: "9", subject: "Mathematics" },
+        { class: "8", subject: "Science" },
+        { class: "8", subject: "Mathematics" },
       ];
-      panels.forEach(([key, el]) => el.classList.toggle('active', key === tabName));
-    }
 
-    function renderExamResponse(data) {
-      const paper = data?.paper || {};
-      const sections = Array.isArray(paper.sections) ? paper.sections : [];
-      const answerKey = Array.isArray(data?.answer_key) ? data.answer_key : [];
-      const evaluation = Array.isArray(data?.evaluation) ? data.evaluation : [];
-      const result = data?.result || {};
-      const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
-
-      const paperLines = [];
-      paperLines.push(`Class: ${paper.class || '-'}`);
-      paperLines.push(`Subject: ${paper.subject || '-'}`);
-      paperLines.push(`Total Marks: ${paper.total_marks ?? '-'}`);
-      paperLines.push('');
-      sections.forEach((section, idx) => {
-        paperLines.push(`${idx + 1}. ${section.section_name || 'Section'}`);
-        const qs = Array.isArray(section.questions) ? section.questions : [];
-        qs.forEach(q => {
-          paperLines.push(`- [${q.question_id || '-'}] (${q.marks ?? 0}m) [${q.chapter || '-'}] ${q.question || ''}`);
+      function populateDropdowns(data) {
+        if (!Array.isArray(data) || data.length === 0) data = FALLBACK_CONTEXTS;
+        const classSet = new Set();
+        const subjectSet = new Set();
+        data.forEach((c) => {
+          if (c && c.class != null && c.subject != null) {
+            classSet.add(String(c.class));
+            subjectSet.add(String(c.subject));
+          }
         });
-        paperLines.push('');
-      });
-      examPanelPaper.textContent = paperLines.join('\n').trim() || 'No paper generated.';
+        // Only support class 10 in the dropdown as requested
+        classSet.clear();
+        classSet.add("10");
 
-      const akLines = [];
-      answerKey.forEach((a, i) => {
-        akLines.push(`${i + 1}. ${a.question_id || '-'}: ${a.question || ''}`);
-        akLines.push(`Answer: ${a.answer || ''}`);
-        akLines.push(`Steps: ${a.steps || ''}`);
-        akLines.push('');
-      });
-      examPanelAnswerKey.textContent = akLines.join('\n').trim() || 'No answer key available.';
+        // Ensure both subjects available
+        subjectSet.add("Science");
+        subjectSet.add("Mathematics");
 
-      const evalLines = [];
-      evaluation.forEach((e, i) => {
-        evalLines.push(`${i + 1}. ${e.question_id || '-'}: ${e.question || ''}`);
-        evalLines.push(`Student: ${e.student_answer || ''}`);
-        evalLines.push(`Correct: ${e.correct_answer || ''}`);
-        evalLines.push(`Marks: ${e.marks_awarded ?? 0}/${e.max_marks ?? 0}`);
-        evalLines.push(`Feedback: ${e.feedback || ''}`);
-        evalLines.push('');
-      });
-      examPanelEvaluation.textContent = evalLines.join('\n').trim() || 'No evaluation generated.';
+        if (classSet.size === 0 || subjectSet.size === 0) {
+          FALLBACK_CONTEXTS.forEach((c) => {
+            classSet.add(String(c.class));
+            subjectSet.add(String(c.subject));
+          });
+        }
+        const classes = [...classSet].sort(
+          (a, b) =>
+            parseInt(a, 10) - parseInt(b, 10) || String(a).localeCompare(b),
+        );
+        const subjects = [...subjectSet].sort();
+        classSelect.innerHTML =
+          '<option value="">Select class</option>' +
+          classes
+            .map((c) => `<option value="${c}">Class ${c}</option>`)
+            .join("");
+        subjectSelect.innerHTML =
+          '<option value="">Select subject</option>' +
+          subjects.map((s) => `<option value="${s}">${s}</option>`).join("");
+        classSelect.value = data[0]?.class || classes[0] || "";
+        subjectSelect.value = data[0]?.subject || subjects[0] || "";
 
-      const analysis = result.analysis || {};
-      examPanelResult.textContent =
-`Total Score: ${result.total_score || '-'}
-Percentage: ${result.percentage || '-'}
-Grade: ${result.grade || '-'}
+        if (!classSelect.value && classes.length > 0) {
+          classSelect.value = classes[0];
+        }
+        if (!subjectSelect.value && subjects.length > 0) {
+          subjectSelect.value = subjects[0];
+        }
+      }
 
-Strong Areas:
-- ${(analysis.strong_areas || []).join('\n- ') || 'N/A'}
-
-Weak Areas:
-- ${(analysis.weak_areas || []).join('\n- ') || 'N/A'}
-
-Suggestions:
-- ${(analysis.suggestions || []).join('\n- ') || 'N/A'}`;
-
-      examPanelWarnings.textContent = warnings.length
-        ? warnings.map((w, i) => `${i + 1}. ${w}`).join('\n')
-        : 'No warnings.';
-
-      examOutputRaw.textContent = JSON.stringify(data, null, 2);
-      examTabs.style.display = 'flex';
-      activateExamTab('paper');
-    }
-
-    async function sendQuestion() {
-      const q = queryInput.value?.trim();
-      const hasImage = !!pendingImageFile;
-      if (!q && !hasImage) return;
-      if (!sessionId) return;
-      
-      queryInput.value = '';
-      
-      if (hasImage) {
-        // Handle Diagram + optional Text
-        const file = pendingImageFile;
-        pendingImageFile = null;
-        imagePreviewContainer.style.display = 'none';
-        
-        const objUrl = URL.createObjectURL(file);
-        let userHtml = `<img src="${objUrl}" alt="Attached Diagram" />`;
-        if (q) userHtml += `<br><div style="margin-top: 0.5rem;">${escapeHtml(q)}</div>`;
-        
-        const userMsg = addMessage('user', '');
-        userMsg.querySelector('.message-bubble').innerHTML = userHtml;
-        
-        const msgEl = addMessage('bot', '', true);
-        sendBtn.disabled = true;
-        
-        const formData = new FormData();
-        formData.append('image', file);
-        if (q) formData.append('query', q);
-        
+      async function loadContexts() {
         try {
-          const res = await fetch(`${API}/chat/${sessionId}/ask/diagram`, {
-            method: 'POST',
-            body: formData,
+          const res = await fetch(`${API}/contexts`);
+          const data = res.ok ? await res.json() : [];
+          populateDropdowns(data);
+        } catch (e) {
+          populateDropdowns(FALLBACK_CONTEXTS);
+        }
+      }
+
+      function showSetup() {
+        sessionId = null;
+        setupScreen.classList.remove("hidden");
+        chatScreen.classList.add("hidden");
+        contextBadge.style.display = "none";
+        newChatBtn.style.display = "none";
+        messages.innerHTML = "";
+        currentMode = "ask"; // Reset to ask mode
+        modeSelect.value = "ask";
+        const askModeMessage = document.getElementById("askModeMessage");
+        const modeHeading = document.getElementById("modeHeading");
+        modeHeading.textContent = "Ask Question Mode Active";
+        askModeMessage.classList.remove("hidden");
+        messages.style.display = "flex";
+        document.querySelector(".input-area").style.display = "flex";
+        examPanel.style.display = "none";
+        examAnswerSection.style.display = "none";
+      }
+
+      function showChat(ctx) {
+        setupScreen.classList.add("hidden");
+        chatScreen.classList.remove("hidden");
+        contextBadge.style.display = "inline-block";
+        newChatBtn.style.display = "inline-block";
+        contextClass.textContent = ctx.class;
+        contextSubject.textContent = ctx.subject;
+
+        const askModeMessage = document.getElementById("askModeMessage");
+        const modeHeading = document.getElementById("modeHeading");
+
+        if (currentMode === "test") {
+          modeHeading.textContent = "Test Generation Mode Active";
+          askModeMessage.classList.remove("hidden");
+          messages.style.display = "none";
+          document.querySelector(".input-area").style.display = "none";
+          examPanel.style.display = "block";
+          examAnswerSection.style.display = "none";
+        } else {
+          modeHeading.textContent = "Ask Question Mode Active";
+          askModeMessage.classList.remove("hidden");
+          messages.style.display = "flex";
+          document.querySelector(".input-area").style.display = "flex";
+          examPanel.style.display = "none";
+          queryInput.focus();
+        }
+      }
+
+      async function startChat() {
+        const class_ = classSelect.value?.trim();
+        const subject = subjectSelect.value?.trim();
+        const mode = modeSelect.value?.trim();
+        if (!class_ || !subject || !mode) return;
+        currentMode = mode;
+        startBtn.disabled = true;
+        startBtn.textContent = "Starting...";
+        try {
+          const res = await fetch(`${API}/chat/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ class: class_, subject }),
           });
           if (!res.ok) throw new Error(await res.text());
           const data = await res.json();
-          updateBubbleToText(msgEl, data.answer);
-        } catch (err) {
-          updateBubbleToText(msgEl, 'Sorry, I could not process the diagram. ' + (err.message || ''));
-        } finally {
-          sendBtn.disabled = false;
-          messages.scrollTop = messages.scrollHeight;
-        }
-      } else {
-        // Normal text query
-        addMessage('user', q);
-        const msgEl = addMessage('bot', '', true);
-        sendBtn.disabled = true;
-        try {
-          const res = await fetch(`${API}/chat/${sessionId}/ask`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: q }),
-          });
-          if (!res.ok) {
-            const bodyText = await res.text();
-            let detail = '';
-            try {
-              const parsed = JSON.parse(bodyText);
-              detail = parsed?.detail || '';
-            } catch (_) {
-              // ignore non-JSON error bodies
-            }
-            throw new Error(detail || bodyText || `HTTP ${res.status}`);
-          }
-          const data = await res.json();
-          updateBubbleToText(msgEl, data.answer);
+          sessionId = data.session_id;
+          showChat({ class: class_, subject });
+          examClass.value = class_;
+          examSubject.value = subject.toLowerCase().includes("math")
+            ? "Maths"
+            : "Science";
+          addMessage("bot", data.message);
         } catch (e) {
-          updateBubbleToText(msgEl, 'Sorry, I could not get an answer. ' + (e.message || 'Please try again.'));
+          showError("Failed to start chat. " + (e.message || ""));
         } finally {
-          sendBtn.disabled = false;
-          messages.scrollTop = messages.scrollHeight;
+          startBtn.disabled = false;
+          startBtn.textContent = "Start chat";
         }
       }
-    }
 
-    setupForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      startChat();
-    });
-
-    sendBtn.addEventListener('click', sendQuestion);
-
-    queryInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendQuestion();
+      function parseStudentAnswers() {
+        let parsedAnswers = {};
+        const answersRaw = examAnswers.value.trim();
+        if (answersRaw) {
+          try {
+            parsedAnswers = JSON.parse(answersRaw);
+          } catch (_) {
+            parsedAnswers = answersRaw;
+          }
+        }
+        return parsedAnswers;
       }
-    });
 
-    newChatBtn.addEventListener('click', showSetup);
-    generateExamBtn.addEventListener('click', generateExam);
-    evaluateExamBtn.addEventListener('click', evaluateExam);
-    examTabs.addEventListener('click', (e) => {
-      const btn = e.target.closest('.exam-tab-btn');
-      if (!btn) return;
-      activateExamTab(btn.dataset.tab);
-    });
+      function parseChapters(value) {
+        return (value || "")
+          .split(/[\n;,]+/) // comma, semicolon, or newline
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
 
-    loadContexts();
+      async function generateExam() {
+        const chapters = parseChapters(examChapters.value);
 
-    // Diagram Upload Logic
-    diagramBtn.addEventListener('click', () => {
-      diagramInput.click();
-    });
+        if (chapters.length === 0) {
+          showError(
+            "Please provide at least one chapter (comma, semicolon, or newline separated).",
+          );
+          return;
+        }
 
-    diagramInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      pendingImageFile = file;
-      imagePreview.src = URL.createObjectURL(file);
-      imagePreviewContainer.style.display = 'block';
-      diagramInput.value = '';
-      queryInput.focus();
-    });
-
-    cancelImageBtn.addEventListener('click', () => {
-      pendingImageFile = null;
-      imagePreviewContainer.style.display = 'none';
-      imagePreview.src = '';
-    });
-
-    // Voice Recording Logic
-    micBtn.addEventListener('mousedown', startRecording);
-    micBtn.addEventListener('touchstart', startRecording, { passive: true });
-    document.addEventListener('mouseup', stopRecording);
-    document.addEventListener('touchend', stopRecording);
-
-    async function startRecording(e) {
-      if (e.type === 'mousedown' && e.button !== 0) return;
-      if (!sessionId || isRecording) return;
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
-        
-        mediaRecorder.ondataavailable = event => {
-          if (event.data.size > 0) audioChunks.push(event.data);
+        const payload = {
+          class: examClass.value,
+          subject: examSubject.value,
+          chapters,
+          difficulty_level: examDifficulty.value,
+          total_marks: parseInt(examTotalMarks.value || "0", 10),
+          paper_pattern: "CBSE latest pattern",
+          student_answers: {},
         };
-        
-        mediaRecorder.onstop = async () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          stream.getTracks().forEach(t => t.stop());
-          if (audioChunks.length === 0) return;
-          
-          const audioUrl = URL.createObjectURL(audioBlob);
-          const userMsg = addMessage('user', '');
-          const userBubble = userMsg.querySelector('.message-bubble');
-          userBubble.innerHTML = `
+
+        const modeHeading = document.getElementById("modeHeading");
+        modeHeading.textContent = "Generating Test...";
+        generateExamBtn.disabled = true;
+        generateExamBtn.textContent = "Generating...";
+        evaluateExamBtn.disabled = true;
+        examTabs.style.display = "none";
+        examPanelPaper.textContent = "Generating exam...";
+        examPanelAnswerKey.textContent = "";
+        examPanelEvaluation.textContent = "";
+        examPanelResult.textContent = "";
+        examPanelWarnings.textContent = "";
+        examOutputRaw.textContent = "";
+
+        try {
+          const res = await fetch(`${API}/exam/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await res.text();
+          if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
+          let json;
+          try {
+            json = JSON.parse(body);
+            renderExamResponse(json);
+          } catch {
+            examPanelPaper.textContent = body;
+          }
+
+          // After generating paper, enable evaluation and answers section
+          evaluateExamBtn.disabled = false;
+          examAnswerSection.style.display = "block";
+        } catch (e) {
+          examPanelPaper.textContent = `Error: ${e.message || "Request failed"}`;
+          showError(`Exam generation failed: ${e.message || "Unknown error"}`);
+        } finally {
+          generateExamBtn.disabled = false;
+          generateExamBtn.textContent = "Give Test";
+          modeHeading.textContent = "Test Generation Mode Active";
+        }
+      }
+
+      async function evaluateExam() {
+        const chapters = parseChapters(examChapters.value);
+
+        if (chapters.length === 0) {
+          showError("Please provide at least one chapter.");
+          return;
+        }
+
+        const parsedAnswers = parseStudentAnswers();
+        if (
+          !parsedAnswers ||
+          (typeof parsedAnswers === "object" &&
+            Object.keys(parsedAnswers).length === 0)
+        ) {
+          showError("Please enter student answers in the answers box first.");
+          return;
+        }
+
+        const payload = {
+          class: examClass.value,
+          subject: examSubject.value,
+          chapters,
+          difficulty_level: examDifficulty.value,
+          total_marks: parseInt(examTotalMarks.value || "0", 10),
+          paper_pattern: "CBSE latest pattern",
+          student_answers: parsedAnswers,
+        };
+
+        evaluateExamBtn.disabled = true;
+        evaluateExamBtn.textContent = "Evaluating...";
+        examTabs.style.display = "none";
+        examPanelEvaluation.textContent = "Evaluating student answers...";
+
+        try {
+          const res = await fetch(`${API}/exam/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const body = await res.text();
+          if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
+          let json;
+          try {
+            json = JSON.parse(body);
+            renderExamResponse(json);
+          } catch {
+            examPanelEvaluation.textContent = body;
+          }
+        } catch (e) {
+          examPanelEvaluation.textContent = `Error: ${e.message || "Request failed"}`;
+          showError("Exam evaluation failed.");
+        } finally {
+          evaluateExamBtn.disabled = false;
+          evaluateExamBtn.textContent = "Evaluate Test";
+        }
+      }
+
+      function addMessage(role, text, isTyping = false) {
+        const div = document.createElement("div");
+        div.className = `message ${role}`;
+        const avatar = role === "user" ? "👤" : "📚";
+        div.innerHTML = `
+        <div class="message-avatar">${avatar}</div>
+        <div class="message-bubble">${isTyping ? '<div class="typing"><span></span><span></span><span></span></div>' : escapeHtml(text)}</div>
+      `;
+        messages.appendChild(div);
+        messages.scrollTop = messages.scrollHeight;
+        return div;
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML.replace(/\n/g, "<br>");
+      }
+
+      function playTTS(text, btn) {
+        if (!("speechSynthesis" in window)) {
+          showError("Text-to-speech not supported in this browser.");
+          return;
+        }
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.cancel();
+          btn.textContent = "🔊 Read Aloud";
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.onstart = () => {
+          btn.textContent = "⏹️ Stop Audio";
+        };
+        utterance.onend = () => {
+          btn.textContent = "🔊 Read Aloud";
+        };
+        utterance.onerror = () => {
+          btn.textContent = "🔊 Read Aloud";
+        };
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function updateBubbleToText(el, text, spokenText = null) {
+        const bubble = el.querySelector(".message-bubble");
+        if (!bubble) return;
+
+        bubble.innerHTML = escapeHtml(text);
+
+        const isBot = el.classList.contains("bot");
+        if (isBot && text) {
+          const actionContainer = document.createElement("div");
+          actionContainer.style.marginTop = "0.75rem";
+          actionContainer.style.paddingTop = "0.5rem";
+          actionContainer.style.borderTop = "1px solid var(--border)";
+          actionContainer.style.display = "flex";
+
+          const ttsBtn = document.createElement("button");
+          ttsBtn.className = "icon-btn";
+          ttsBtn.style.width = "auto";
+          ttsBtn.style.height = "28px";
+          ttsBtn.style.padding = "0 0.5rem";
+          ttsBtn.style.fontSize = "0.8rem";
+          ttsBtn.title = "Play Audio";
+          ttsBtn.textContent = "🔊 Read Aloud";
+          const audioText = spokenText || text;
+          ttsBtn.onclick = () => playTTS(audioText, ttsBtn);
+
+          actionContainer.appendChild(ttsBtn);
+          bubble.appendChild(actionContainer);
+        }
+      }
+
+      function showError(msg) {
+        const toast = document.createElement("div");
+        toast.className = "error-toast";
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 4000);
+      }
+
+      function activateExamTab(tabName) {
+        const buttons = [...examTabs.querySelectorAll(".exam-tab-btn")];
+        buttons.forEach((btn) => {
+          btn.classList.toggle("active", btn.dataset.tab === tabName);
+        });
+        const panels = [
+          ["paper", examPanelPaper],
+          ["answer_key", examPanelAnswerKey],
+          ["evaluation", examPanelEvaluation],
+          ["result", examPanelResult],
+          ["warnings", examPanelWarnings],
+          ["raw", examOutputRaw],
+        ];
+        panels.forEach(([key, el]) =>
+          el.classList.toggle("active", key === tabName),
+        );
+      }
+
+      function renderExamResponse(data) {
+        const paper = data?.paper || {};
+        const sections = Array.isArray(paper.sections) ? paper.sections : [];
+        const answerKey = Array.isArray(data?.answer_key)
+          ? data.answer_key
+          : [];
+        const evaluation = Array.isArray(data?.evaluation)
+          ? data.evaluation
+          : [];
+        const result = data?.result || {};
+        const warnings = Array.isArray(data?.warnings) ? data.warnings : [];
+
+        const paperLines = [];
+        paperLines.push(`Class: ${paper.class || "-"}`);
+        paperLines.push(`Subject: ${paper.subject || "-"}`);
+        paperLines.push(`Total Marks: ${paper.total_marks ?? "-"}`);
+        paperLines.push("");
+        sections.forEach((section, idx) => {
+          paperLines.push(`${idx + 1}. ${section.section_name || "Section"}`);
+          const qs = Array.isArray(section.questions) ? section.questions : [];
+          qs.forEach((q) => {
+            paperLines.push(
+              `- [${q.question_id || "-"}] (${q.marks ?? 0}m) [${q.chapter || "-"}] ${q.question || ""}`,
+            );
+          });
+          paperLines.push("");
+        });
+        examPanelPaper.textContent =
+          paperLines.join("\n").trim() || "No paper generated.";
+
+        const akLines = [];
+        answerKey.forEach((a, i) => {
+          akLines.push(
+            `${i + 1}. ${a.question_id || "-"}: ${a.question || ""}`,
+          );
+          akLines.push(`Answer: ${a.answer || ""}`);
+          akLines.push(`Steps: ${a.steps || ""}`);
+          akLines.push("");
+        });
+        examPanelAnswerKey.textContent =
+          akLines.join("\n").trim() || "No answer key available.";
+
+        const evalLines = [];
+        evaluation.forEach((e, i) => {
+          evalLines.push(
+            `${i + 1}. ${e.question_id || "-"}: ${e.question || ""}`,
+          );
+          evalLines.push(`Student: ${e.student_answer || ""}`);
+          evalLines.push(`Correct: ${e.correct_answer || ""}`);
+          evalLines.push(`Marks: ${e.marks_awarded ?? 0}/${e.max_marks ?? 0}`);
+          evalLines.push(`Feedback: ${e.feedback || ""}`);
+          evalLines.push("");
+        });
+        examPanelEvaluation.textContent =
+          evalLines.join("\n").trim() || "No evaluation generated.";
+
+        const analysis = result.analysis || {};
+        examPanelResult.textContent = `Total Score: ${result.total_score || "-"}
+Percentage: ${result.percentage || "-"}
+Grade: ${result.grade || "-"}
+
+Strong Areas:
+- ${(analysis.strong_areas || []).join("\n- ") || "N/A"}
+
+Weak Areas:
+- ${(analysis.weak_areas || []).join("\n- ") || "N/A"}
+
+Suggestions:
+- ${(analysis.suggestions || []).join("\n- ") || "N/A"}`;
+
+        examPanelWarnings.textContent = warnings.length
+          ? warnings.map((w, i) => `${i + 1}. ${w}`).join("\n")
+          : "No warnings.";
+
+        examOutputRaw.textContent = JSON.stringify(data, null, 2);
+        examTabs.style.display = "flex";
+        activateExamTab("paper");
+      }
+
+      async function sendQuestion() {
+        if (currentMode !== "ask") return; // Only allow sending in ask mode
+
+        const q = queryInput.value?.trim();
+        const hasImage = !!pendingImageFile;
+        if (!q && !hasImage) return;
+        if (!sessionId) return;
+
+        queryInput.value = "";
+
+        if (hasImage) {
+          // Handle Diagram + optional Text
+          const file = pendingImageFile;
+          pendingImageFile = null;
+          imagePreviewContainer.style.display = "none";
+
+          const objUrl = URL.createObjectURL(file);
+          let userHtml = `<img src="${objUrl}" alt="Attached Diagram" />`;
+          if (q)
+            userHtml += `<br><div style="margin-top: 0.5rem;">${escapeHtml(q)}</div>`;
+
+          const userMsg = addMessage("user", "");
+          userMsg.querySelector(".message-bubble").innerHTML = userHtml;
+
+          const msgEl = addMessage("bot", "", true);
+          sendBtn.disabled = true;
+
+          const formData = new FormData();
+          formData.append("image", file);
+          if (q) formData.append("query", q);
+
+          try {
+            const res = await fetch(`${API}/chat/${sessionId}/ask/diagram`, {
+              method: "POST",
+              body: formData,
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            updateBubbleToText(msgEl, data.answer);
+          } catch (err) {
+            updateBubbleToText(
+              msgEl,
+              "Sorry, I could not process the diagram. " + (err.message || ""),
+            );
+          } finally {
+            sendBtn.disabled = false;
+            messages.scrollTop = messages.scrollHeight;
+          }
+        } else {
+          // Normal text query
+          addMessage("user", q);
+          const msgEl = addMessage("bot", "", true);
+          sendBtn.disabled = true;
+          try {
+            const res = await fetch(`${API}/chat/${sessionId}/ask`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ query: q }),
+            });
+            if (!res.ok) {
+              const bodyText = await res.text();
+              let detail = "";
+              try {
+                const parsed = JSON.parse(bodyText);
+                detail = parsed?.detail || "";
+              } catch (_) {
+                // ignore non-JSON error bodies
+              }
+              throw new Error(detail || bodyText || `HTTP ${res.status}`);
+            }
+            const data = await res.json();
+            updateBubbleToText(msgEl, data.answer);
+          } catch (e) {
+            updateBubbleToText(
+              msgEl,
+              "Sorry, I could not get an answer. " +
+                (e.message || "Please try again."),
+            );
+          } finally {
+            sendBtn.disabled = false;
+            messages.scrollTop = messages.scrollHeight;
+          }
+        }
+      }
+
+      setupForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        startChat();
+      });
+
+      sendBtn.addEventListener("click", sendQuestion);
+
+      queryInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendQuestion();
+        }
+      });
+
+      newChatBtn.addEventListener("click", showSetup);
+      generateExamBtn.addEventListener("click", generateExam);
+      evaluateExamBtn.addEventListener("click", evaluateExam);
+      examTabs.addEventListener("click", (e) => {
+        const btn = e.target.closest(".exam-tab-btn");
+        if (!btn) return;
+        activateExamTab(btn.dataset.tab);
+      });
+
+      loadContexts();
+
+      // Diagram Upload Logic
+      diagramBtn.addEventListener("click", () => {
+        diagramInput.click();
+      });
+
+      diagramInput.addEventListener("change", (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        pendingImageFile = file;
+        imagePreview.src = URL.createObjectURL(file);
+        imagePreviewContainer.style.display = "block";
+        diagramInput.value = "";
+        queryInput.focus();
+      });
+
+      cancelImageBtn.addEventListener("click", () => {
+        pendingImageFile = null;
+        imagePreviewContainer.style.display = "none";
+        imagePreview.src = "";
+      });
+
+      // Voice Recording Logic
+      micBtn.addEventListener("mousedown", startRecording);
+      micBtn.addEventListener("touchstart", startRecording, { passive: true });
+      document.addEventListener("mouseup", stopRecording);
+      document.addEventListener("touchend", stopRecording);
+
+      async function startRecording(e) {
+        if (e.type === "mousedown" && e.button !== 0) return;
+        if (!sessionId || isRecording) return;
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            stream.getTracks().forEach((t) => t.stop());
+            if (audioChunks.length === 0) return;
+
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const userMsg = addMessage("user", "");
+            const userBubble = userMsg.querySelector(".message-bubble");
+            userBubble.innerHTML = `
             <div style="display: flex; flex-direction: column; gap: 5px;">
               <div class="user-transcript">🎤 <em>Transcribing...</em></div>
               <audio controls src="${audioUrl}" style="height: 36px; max-width: 220px; outline: none; border-radius: 8px;"></audio>
             </div>
           `;
-          
-          const msgEl = addMessage('bot', '', true);
-          
-          const formData = new FormData();
-          formData.append('audio', audioBlob, 'record.webm');
-          
-          try {
-            const res = await fetch(`${API}/chat/${sessionId}/ask/voice`, {
-              method: 'POST',
-              body: formData,
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            
-            const transEl = userBubble.querySelector('.user-transcript');
-            if (transEl) {
-              transEl.textContent = `"${data.transcript}"`;
-            }
-            
-            updateBubbleToText(msgEl, data.answer, data.spoken_text);
-          } catch (err) {
-            updateBubbleToText(msgEl, 'Sorry, I could not process your voice. ' + (err.message || ''));
-            const transEl = userBubble.querySelector('.user-transcript');
-            if (transEl) {
-              transEl.innerHTML = `🎤 <em style="color: #ef4444;">Failed to transcribe</em>`;
-            }
-          } finally {
-             messages.scrollTop = messages.scrollHeight;
-          }
-        };
-        
-        mediaRecorder.start();
-        isRecording = true;
-        micBtn.classList.add('recording');
-      } catch (err) {
-        showError('Microphone access denied or unavailable.');
-      }
-    }
 
-    function stopRecording() {
-      if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
-        mediaRecorder.stop();
-        isRecording = false;
-        micBtn.classList.remove('recording');
+            const msgEl = addMessage("bot", "", true);
+
+            const formData = new FormData();
+            formData.append("audio", audioBlob, "record.webm");
+
+            try {
+              const res = await fetch(`${API}/chat/${sessionId}/ask/voice`, {
+                method: "POST",
+                body: formData,
+              });
+              if (!res.ok) throw new Error(await res.text());
+              const data = await res.json();
+
+              const transEl = userBubble.querySelector(".user-transcript");
+              if (transEl) {
+                transEl.textContent = `"${data.transcript}"`;
+              }
+
+              updateBubbleToText(msgEl, data.answer, data.spoken_text);
+            } catch (err) {
+              updateBubbleToText(
+                msgEl,
+                "Sorry, I could not process your voice. " + (err.message || ""),
+              );
+              const transEl = userBubble.querySelector(".user-transcript");
+              if (transEl) {
+                transEl.innerHTML = `🎤 <em style="color: #ef4444;">Failed to transcribe</em>`;
+              }
+            } finally {
+              messages.scrollTop = messages.scrollHeight;
+            }
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          micBtn.classList.add("recording");
+        } catch (err) {
+          showError("Microphone access denied or unavailable.");
+        }
       }
-    }
-  </script>
-</body>
+
+      function stopRecording() {
+        if (
+          isRecording &&
+          mediaRecorder &&
+          mediaRecorder.state !== "inactive"
+        ) {
+          mediaRecorder.stop();
+          isRecording = false;
+          micBtn.classList.remove("recording");
+        }
+      }
+    </script>
+  </body>
 </html>
