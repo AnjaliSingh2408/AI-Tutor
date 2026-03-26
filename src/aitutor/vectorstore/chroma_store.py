@@ -55,6 +55,18 @@ class ChromaStore:
             metadata={"hnsw:space": self.cfg.chroma_space},
         )
 
+    def multimodal_collection(self):
+        """
+        Dedicated collection for cross-modal vectors (Gemini Embedding 2).
+        Embeddings are supplied explicitly by the caller.
+        """
+        client = self._client()
+        return client.get_or_create_collection(
+            name=self.cfg.multimodal_collection,
+            embedding_function=None,
+            metadata={"hnsw:space": self.cfg.chroma_space},
+        )
+
     def add_texts(self, *, ids: list[str], texts: list[str], metadatas: list[dict[str, Any]]) -> None:
         if not ids:
             return
@@ -91,4 +103,39 @@ class ChromaStore:
         """
         col = self.raw_collection()
         return col.get(where=where, limit=limit, include=include or ["documents", "metadatas"])
+
+    def reset_multimodal(self) -> None:
+        client = self._client()
+        try:
+            client.delete_collection(name=self.cfg.multimodal_collection)
+        except Exception:
+            pass
+
+    def add_multimodal(
+        self,
+        *,
+        ids: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, Any]],
+        documents: list[str],
+    ) -> None:
+        if not ids:
+            return
+        col = self.multimodal_collection()
+        col.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
+
+    def query_multimodal(
+        self,
+        *,
+        query_embedding: list[float],
+        n_results: int,
+        where: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        col = self.multimodal_collection()
+        return col.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            where=where,
+            include=["documents", "metadatas", "distances"],
+        )
 

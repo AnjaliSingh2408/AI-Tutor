@@ -6,6 +6,7 @@ import os
 
 # Default Gemini model for this project (Gemini Developer API id).
 DEFAULT_GEMINI_MODEL = "models/gemini-2.5-flash"
+DEFAULT_GEMINI_EMBED_MODEL = "models/gemini-embedding-2-preview"
 
 
 def normalize_gemini_model_id(raw: str) -> str:
@@ -53,6 +54,10 @@ def get_gemini_model() -> str:
     return normalize_gemini_model_id(os.getenv("GEMINI_MODEL") or "")
 
 
+def get_gemini_embed_model() -> str:
+    return normalize_gemini_model_id(os.getenv("GEMINI_EMBED_MODEL") or DEFAULT_GEMINI_EMBED_MODEL)
+
+
 @dataclass(frozen=True)
 class AppConfig:
     project_root: Path
@@ -61,6 +66,7 @@ class AppConfig:
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     chroma_collection: str = "ncert_chunks_v1"
+    multimodal_collection: str = "ncert_multimodal_v1"
     chroma_space: str = "cosine"
 
     # Hallucination prevention: refuse if top similarity is below this
@@ -68,6 +74,7 @@ class AppConfig:
 
     # LLM (Gemini) — default `models/gemini-2.5-flash`; override with GEMINI_MODEL in .env
     gemini_model: str = DEFAULT_GEMINI_MODEL
+    gemini_embed_model: str = DEFAULT_GEMINI_EMBED_MODEL
 
 
 def get_config(project_root: str | Path | None = None) -> AppConfig:
@@ -79,5 +86,6 @@ def get_config(project_root: str | Path | None = None) -> AppConfig:
         data_dir=data_dir,
         chroma_dir=chroma_dir,
         gemini_model=get_gemini_model(),
+        gemini_embed_model=get_gemini_embed_model(),
     )
 

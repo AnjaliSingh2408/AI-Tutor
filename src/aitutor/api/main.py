@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from google.genai.errors import ClientError, ServerError
@@ -16,6 +16,7 @@ from ..config import get_config, get_gemini_api_key
 from ..rag.tutor import Tutor
 from ..generation import ClarifierLLM, SummaryLLM
 from ..exam import ExamEngine
+from ..multimodal import MultiModalTutor
 
 # --- Load .env from repo root ---
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -131,6 +132,15 @@ class ExamRequest(BaseModel):
 
     class Config:
         populate_by_name = True
+class DiagramAnswerResponse(BaseModel):
+    answer: str
+    retrieved: list[dict]
+
+
+class VoiceAnswerResponse(BaseModel):
+    transcript: str
+    answer: str
+    spoken_text: str
 
 
 # ---------- Routes ----------
@@ -238,6 +248,106 @@ def run_exam(req: ExamRequest):
         raise HTTPException(503, "Exam generation service temporarily unavailable.") from exc
     except Exception as exc:
         raise HTTPException(500, f"Exam generation failed: {exc}") from exc
+@app.post("/api/chat/{session_id}/ask/diagram", response_model=DiagramAnswerResponse)
+async def ask_diagram(
+    session_id: str,
+    image: UploadFile = File(...),
+    query: str | None = Form(None),
+):
+    if session_id not in _sessions:
+        raise HTTPException(404, "Session not found")
+    if not get_gemini_api_key():
+        raise HTTPException(503, "GEMINI_API_KEY missing in .env")
+
+    content = await image.read()
+    if not content:
+        raise HTTPException(400, "Uploaded diagram image is empty")
+
+    ctx = _sessions[session_id]
+    mm = MultiModalTutor.default()
+    try:
+        out = mm.diagram_explain(
+            image_bytes=content,
+            mime_type=image.content_type or "image/png",
+            class_=ctx["class_"],
+            subject=ctx["subject"],
+            chapter=ctx["chapter"],
+            user_query=query,
+            top_k=5,
+        )
+    except (ClientError, ServerError) as exc:
+        _raise_if_gemini_api_key_invalid(exc)
+        raise HTTPException(502, f"Gemini request failed: {exc}") from exc
+
+    answer = out.get("answer", "").strip()
+    ctx["last_question"] = "[diagram-upload]"
+    ctx["last_answer"] = answer
+    _append_history(ctx, role="assistant", text=answer)
+    return DiagramAnswerResponse(answer=answer, retrieved=out.get("retrieved", []))
+
+
+@app.post("/api/chat/{session_id}/ask/voice", response_model=VoiceAnswerResponse)
+async def ask_voice(
+    session_id: str,
+    audio: UploadFile = File(...),
+):
+    if session_id not in _sessions:
+        raise HTTPException(404, "Session not found")
+    if not get_gemini_api_key():
+        raise HTTPException(503, "GEMINI_API_KEY missing in .env")
+
+    payload = await audio.read()
+    if not payload:
+        raise HTTPException(400, "Uploaded audio is empty")
+
+    ctx = _sessions[session_id]
+    mm = MultiModalTutor.default()
+    try:
+        out = mm.voice_answer(
+            audio_bytes=payload,
+            mime_type=audio.content_type or "audio/mpeg",
+            class_=ctx["class_"],
+            subject=ctx["subject"],
+            chapter=ctx["chapter"],
+            top_k=5,
+        )
+    except (ClientError, ServerError) as exc:
+        _raise_if_gemini_api_key_invalid(exc)
+        raise HTTPException(502, f"Gemini request failed: {exc}") from exc
+
+    transcript = out.get("transcript", "").strip()
+    answer = out.get("answer", "").strip()
+    ctx["last_question"] = transcript
+    ctx["last_answer"] = answer
+    _append_history(ctx, role="assistant", text=answer)
+    return VoiceAnswerResponse(
+        transcript=transcript,
+        answer=answer,
+        spoken_text=(out.get("spoken_text", "") or answer).strip(),
+    )
+
+
+@app.post("/api/multimodal/reindex")
+def rebuild_multimodal_index(
+    class_: str = Form(..., alias="class"),
+    subject: str = Form(...),
+    chapter: str | None = Form(default=None),
+    diagrams_dir: str | None = Form(default=None),
+):
+    if not get_gemini_api_key():
+        raise HTTPException(503, "GEMINI_API_KEY missing in .env")
+    mm = MultiModalTutor.default()
+    try:
+        result = mm.rebuild_multimodal_index(
+            class_=class_,
+            subject=subject,
+            chapter=chapter,
+            diagrams_dir=diagrams_dir,
+        )
+    except (ClientError, ServerError) as exc:
+        _raise_if_gemini_api_key_invalid(exc)
+        raise HTTPException(502, f"Gemini request failed: {exc}") from exc
+    return result
 
 
 @app.get("/api/chat/{session_id}/context")

@@ -70,3 +70,77 @@ Open http://localhost:8000 in your browser. You’ll:
 
 No need to repeat class/subject for every question.
 
+## Multimodal features (diagram + audio + unified search)
+
+This project now includes:
+
+- Diagram understanding + NCERT-grounded explanation
+- Unified multimodal vector index using Gemini Embedding 2
+- Voice question flow (audio -> transcript -> NCERT answer), plus speech-ready text output
+
+### 1) Build multimodal index
+
+First ingest NCERT text as before, then build multimodal vectors:
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books
+```
+
+You can pass `--chapter` to narrow indexing.
+If you hit free-tier embedding quota, reduce indexing load:
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --max-text-chunks 600 --text-batch-size 16
+```
+
+### Auto-extract diagrams from PDF textbooks (long-term setup)
+
+To index diagrams embedded *inside* PDFs (not just standalone JPG/PNG files):
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --extract-pdf-diagrams --max-text-chunks 600 --text-batch-size 16
+```
+
+This will:
+- extract embedded PDF images into `data/diagram_cache`
+- index those extracted diagrams as image vectors
+- return `extracted_pdf_diagrams` in output summary
+
+### Resume indexing across days (quota-safe)
+
+If free-tier quota stops indexing mid-run, continue later without resetting:
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --extract-pdf-diagrams --max-text-chunks 600 --text-batch-size 16 --resume
+```
+
+`--resume` skips chunks/images already indexed in the multimodal collection.
+
+### 2) Diagram explanation (CLI)
+
+```bash
+python -m aitutor diagram-ask --class 10 --subject Science --image-path example.png
+```
+
+This uses:
+- Gemini Embedding 2 for image->NCERT retrieval
+- Gemini Flash for visual reasoning + explanation
+
+### 3) Voice question (CLI)
+
+```bash
+python -m aitutor voice-ask --class 10 --subject Science --audio-path sample.mp3 --mime-type audio/mpeg
+```
+
+### 4) New API endpoints
+
+- `POST /api/multimodal/reindex` (form data)
+  - fields: `class`, `subject`, optional `chapter`, optional `diagrams_dir`
+- `POST /api/chat/{session_id}/ask/diagram` (multipart file: `image`)
+- `POST /api/chat/{session_id}/ask/voice` (multipart file: `audio`)
+
+For `/ask/voice`, response includes:
+- `transcript`
+- `answer` (NCERT-grounded)
+- `spoken_text` (rewritten for natural TTS delivery)
+

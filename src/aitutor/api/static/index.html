@@ -297,6 +297,47 @@
       gap: 0.5rem;
       padding-top: 1rem;
       border-top: 1px solid var(--border);
+      align-items: flex-end;
+    }
+
+    .icon-btn {
+      padding: 0;
+      width: 48px;
+      height: 48px;
+      font-size: 1.25rem;
+      background: var(--surface);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+
+    .icon-btn:hover:not(:disabled) {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    .icon-btn.recording {
+      color: #ef4444;
+      border-color: #ef4444;
+      animation: pulseRecord 1.5s infinite;
+    }
+
+    @keyframes pulseRecord {
+      0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+
+    .message-bubble img {
+      max-width: 100%;
+      border-radius: var(--radius-sm);
+      margin-top: 0.5rem;
     }
 
     .input-area textarea {
@@ -480,13 +521,22 @@
 
     <section class="chat-screen hidden" id="chatScreen">
       <div class="messages" id="messages"></div>
-      <div class="input-area">
-        <textarea
-          id="queryInput"
-          placeholder="Ask your NCERT question..."
-          rows="1"
-        ></textarea>
-        <button class="send-btn" id="sendBtn" type="button">Send</button>
+      <div class="input-area" style="flex-wrap: wrap;">
+        <div id="imagePreviewContainer" style="display: none; width: 100%; margin-bottom: 0.5rem; position: relative; width: max-content;">
+           <img id="imagePreview" src="" style="height: 64px; border-radius: var(--radius-sm); border: 1px solid var(--border);" />
+           <button id="cancelImageBtn" style="position: absolute; top: -6px; right: -6px; background: #ef4444; color: white; border: none; border-radius: 50%; width: 20px; height: 20px; cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center;">✕</button>
+        </div>
+        <div style="display: flex; gap: 0.5rem; width: 100%;">
+          <button class="icon-btn" id="diagramBtn" type="button" title="Upload Diagram">🖼️</button>
+          <input type="file" id="diagramInput" accept="image/png, image/jpeg" style="display: none;" />
+          <button class="icon-btn" id="micBtn" type="button" title="Hold to Record">🎤</button>
+          <textarea
+            id="queryInput"
+            placeholder="Ask your NCERT question..."
+            rows="1"
+          ></textarea>
+          <button class="send-btn" id="sendBtn" type="button">Send</button>
+        </div>
       </div>
 
       <div class="exam-panel">
@@ -580,6 +630,19 @@
     const examPanelResult = document.getElementById('examPanelResult');
     const examPanelWarnings = document.getElementById('examPanelWarnings');
     const examOutputRaw = document.getElementById('examOutputRaw');
+    
+    const diagramBtn = document.getElementById('diagramBtn');
+    const diagramInput = document.getElementById('diagramInput');
+    const micBtn = document.getElementById('micBtn');
+
+    const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+    const imagePreview = document.getElementById('imagePreview');
+    const cancelImageBtn = document.getElementById('cancelImageBtn');
+    let pendingImageFile = null;
+
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
 
     const FALLBACK_CONTEXTS = [
       { class: '10', subject: 'Science' },
@@ -819,9 +882,51 @@
       return div.innerHTML.replace(/\n/g, '<br>');
     }
 
-    function updateBubbleToText(el, text) {
+    function playTTS(text, btn) {
+      if (!('speechSynthesis' in window)) {
+        showError('Text-to-speech not supported in this browser.');
+        return;
+      }
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+        btn.textContent = '🔊 Read Aloud';
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.onstart = () => { btn.textContent = '⏹️ Stop Audio'; };
+      utterance.onend = () => { btn.textContent = '🔊 Read Aloud'; };
+      utterance.onerror = () => { btn.textContent = '🔊 Read Aloud'; };
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function updateBubbleToText(el, text, spokenText = null) {
       const bubble = el.querySelector('.message-bubble');
-      if (bubble) bubble.innerHTML = escapeHtml(text);
+      if (!bubble) return;
+      
+      bubble.innerHTML = escapeHtml(text);
+      
+      const isBot = el.classList.contains('bot');
+      if (isBot && text) {
+        const actionContainer = document.createElement('div');
+        actionContainer.style.marginTop = '0.75rem';
+        actionContainer.style.paddingTop = '0.5rem';
+        actionContainer.style.borderTop = '1px solid var(--border)';
+        actionContainer.style.display = 'flex';
+        
+        const ttsBtn = document.createElement('button');
+        ttsBtn.className = 'icon-btn';
+        ttsBtn.style.width = 'auto';
+        ttsBtn.style.height = '28px';
+        ttsBtn.style.padding = '0 0.5rem';
+        ttsBtn.style.fontSize = '0.8rem';
+        ttsBtn.title = "Play Audio";
+        ttsBtn.textContent = '🔊 Read Aloud';
+        const audioText = spokenText || text;
+        ttsBtn.onclick = () => playTTS(audioText, ttsBtn);
+        
+        actionContainer.appendChild(ttsBtn);
+        bubble.appendChild(actionContainer);
+      }
     }
 
     function showError(msg) {
@@ -917,35 +1022,76 @@ Suggestions:
 
     async function sendQuestion() {
       const q = queryInput.value?.trim();
-      if (!q || !sessionId) return;
+      const hasImage = !!pendingImageFile;
+      if (!q && !hasImage) return;
+      if (!sessionId) return;
+      
       queryInput.value = '';
-      addMessage('user', q);
-      const msgEl = addMessage('bot', '', true);
-      sendBtn.disabled = true;
-      try {
-        const res = await fetch(`${API}/chat/${sessionId}/ask`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: q }),
-        });
-        if (!res.ok) {
-          const bodyText = await res.text();
-          let detail = '';
-          try {
-            const parsed = JSON.parse(bodyText);
-            detail = parsed?.detail || '';
-          } catch (_) {
-            // ignore non-JSON error bodies
-          }
-          throw new Error(detail || bodyText || `HTTP ${res.status}`);
+      
+      if (hasImage) {
+        // Handle Diagram + optional Text
+        const file = pendingImageFile;
+        pendingImageFile = null;
+        imagePreviewContainer.style.display = 'none';
+        
+        const objUrl = URL.createObjectURL(file);
+        let userHtml = `<img src="${objUrl}" alt="Attached Diagram" />`;
+        if (q) userHtml += `<br><div style="margin-top: 0.5rem;">${escapeHtml(q)}</div>`;
+        
+        const userMsg = addMessage('user', '');
+        userMsg.querySelector('.message-bubble').innerHTML = userHtml;
+        
+        const msgEl = addMessage('bot', '', true);
+        sendBtn.disabled = true;
+        
+        const formData = new FormData();
+        formData.append('image', file);
+        if (q) formData.append('query', q);
+        
+        try {
+          const res = await fetch(`${API}/chat/${sessionId}/ask/diagram`, {
+            method: 'POST',
+            body: formData,
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          updateBubbleToText(msgEl, data.answer);
+        } catch (err) {
+          updateBubbleToText(msgEl, 'Sorry, I could not process the diagram. ' + (err.message || ''));
+        } finally {
+          sendBtn.disabled = false;
+          messages.scrollTop = messages.scrollHeight;
         }
-        const data = await res.json();
-        updateBubbleToText(msgEl, data.answer);
-      } catch (e) {
-        updateBubbleToText(msgEl, 'Sorry, I could not get an answer. ' + (e.message || 'Please try again.'));
-      } finally {
-        sendBtn.disabled = false;
-        messages.scrollTop = messages.scrollHeight;
+      } else {
+        // Normal text query
+        addMessage('user', q);
+        const msgEl = addMessage('bot', '', true);
+        sendBtn.disabled = true;
+        try {
+          const res = await fetch(`${API}/chat/${sessionId}/ask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: q }),
+          });
+          if (!res.ok) {
+            const bodyText = await res.text();
+            let detail = '';
+            try {
+              const parsed = JSON.parse(bodyText);
+              detail = parsed?.detail || '';
+            } catch (_) {
+              // ignore non-JSON error bodies
+            }
+            throw new Error(detail || bodyText || `HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          updateBubbleToText(msgEl, data.answer);
+        } catch (e) {
+          updateBubbleToText(msgEl, 'Sorry, I could not get an answer. ' + (e.message || 'Please try again.'));
+        } finally {
+          sendBtn.disabled = false;
+          messages.scrollTop = messages.scrollHeight;
+        }
       }
     }
 
@@ -973,6 +1119,107 @@ Suggestions:
     });
 
     loadContexts();
+
+    // Diagram Upload Logic
+    diagramBtn.addEventListener('click', () => {
+      diagramInput.click();
+    });
+
+    diagramInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      pendingImageFile = file;
+      imagePreview.src = URL.createObjectURL(file);
+      imagePreviewContainer.style.display = 'block';
+      diagramInput.value = '';
+      queryInput.focus();
+    });
+
+    cancelImageBtn.addEventListener('click', () => {
+      pendingImageFile = null;
+      imagePreviewContainer.style.display = 'none';
+      imagePreview.src = '';
+    });
+
+    // Voice Recording Logic
+    micBtn.addEventListener('mousedown', startRecording);
+    micBtn.addEventListener('touchstart', startRecording, { passive: true });
+    document.addEventListener('mouseup', stopRecording);
+    document.addEventListener('touchend', stopRecording);
+
+    async function startRecording(e) {
+      if (e.type === 'mousedown' && e.button !== 0) return;
+      if (!sessionId || isRecording) return;
+      
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+        
+        mediaRecorder.ondataavailable = event => {
+          if (event.data.size > 0) audioChunks.push(event.data);
+        };
+        
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          stream.getTracks().forEach(t => t.stop());
+          if (audioChunks.length === 0) return;
+          
+          const audioUrl = URL.createObjectURL(audioBlob);
+          const userMsg = addMessage('user', '');
+          const userBubble = userMsg.querySelector('.message-bubble');
+          userBubble.innerHTML = `
+            <div style="display: flex; flex-direction: column; gap: 5px;">
+              <div class="user-transcript">🎤 <em>Transcribing...</em></div>
+              <audio controls src="${audioUrl}" style="height: 36px; max-width: 220px; outline: none; border-radius: 8px;"></audio>
+            </div>
+          `;
+          
+          const msgEl = addMessage('bot', '', true);
+          
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'record.webm');
+          
+          try {
+            const res = await fetch(`${API}/chat/${sessionId}/ask/voice`, {
+              method: 'POST',
+              body: formData,
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const data = await res.json();
+            
+            const transEl = userBubble.querySelector('.user-transcript');
+            if (transEl) {
+              transEl.textContent = `"${data.transcript}"`;
+            }
+            
+            updateBubbleToText(msgEl, data.answer, data.spoken_text);
+          } catch (err) {
+            updateBubbleToText(msgEl, 'Sorry, I could not process your voice. ' + (err.message || ''));
+            const transEl = userBubble.querySelector('.user-transcript');
+            if (transEl) {
+              transEl.innerHTML = `🎤 <em style="color: #ef4444;">Failed to transcribe</em>`;
+            }
+          } finally {
+             messages.scrollTop = messages.scrollHeight;
+          }
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        micBtn.classList.add('recording');
+      } catch (err) {
+        showError('Microphone access denied or unavailable.');
+      }
+    }
+
+    function stopRecording() {
+      if (isRecording && mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+        isRecording = false;
+        micBtn.classList.remove('recording');
+      }
+    }
   </script>
 </body>
 </html>

@@ -18,6 +18,8 @@ src/aitutor/ingest/book_id.py
 src/aitutor/ingest/chunking.py
 src/aitutor/ingest/pdf_extract.py
 src/aitutor/ingest/pipeline.py
+src/aitutor/multimodal/__init__.py
+src/aitutor/multimodal/service.py
 src/aitutor/rag/__init__.py
 src/aitutor/rag/tutor.py
 src/aitutor/retrieval/__init__.py
