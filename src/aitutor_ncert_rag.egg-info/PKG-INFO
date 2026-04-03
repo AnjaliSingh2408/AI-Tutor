@@ -94,6 +94,34 @@ python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books
 ```
 
 You can pass `--chapter` to narrow indexing.
+If you hit free-tier embedding quota, reduce indexing load:
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --max-text-chunks 600 --text-batch-size 16
+```
+
+### Auto-extract diagrams from PDF textbooks (long-term setup)
+
+To index diagrams embedded *inside* PDFs (not just standalone JPG/PNG files):
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --extract-pdf-diagrams --max-text-chunks 600 --text-batch-size 16
+```
+
+This will:
+- extract embedded PDF images into `data/diagram_cache`
+- index those extracted diagrams as image vectors
+- return `extracted_pdf_diagrams` in output summary
+
+### Resume indexing across days (quota-safe)
+
+If free-tier quota stops indexing mid-run, continue later without resetting:
+
+```bash
+python -m aitutor mm-index --class 10 --subject Science --diagrams-dir books --extract-pdf-diagrams --max-text-chunks 600 --text-batch-size 16 --resume
+```
+
+`--resume` skips chunks/images already indexed in the multimodal collection.
 
 ### 2) Diagram explanation (CLI)
 
